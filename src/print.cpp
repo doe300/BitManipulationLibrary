@@ -19,7 +19,7 @@ namespace bml::detail {
     // integer multiples
     for (const auto &magnitude : MAGNITUDES) {
       if ((value % magnitude.first) == 0) {
-        if (auto result = std::to_chars(buffer.begin(), buffer.end(), value / magnitude.first);
+        if (auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value / magnitude.first);
             result.ec == std::errc{}) {
           *result.ptr++ = magnitude.second;
           *result.ptr++ = postfix;
@@ -32,7 +32,7 @@ namespace bml::detail {
       if (value > magnitude.first) {
         auto tmp = static_cast<double>(value) / static_cast<double>(magnitude.first);
         tmp = std::round(tmp * 100.0f) / 100.0f;
-        if (auto result = std::to_chars(buffer.begin(), buffer.end(), tmp, std::chars_format::fixed);
+        if (auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), tmp, std::chars_format::fixed);
             result.ec == std::errc{}) {
           *result.ptr++ = magnitude.second;
           *result.ptr++ = postfix;
@@ -41,7 +41,7 @@ namespace bml::detail {
       }
     }
 
-    if (auto result = std::to_chars(buffer.begin(), buffer.end(), value); result.ec == std::errc{}) {
+    if (auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value); result.ec == std::errc{}) {
       *result.ptr++ = postfix;
       return std::string(buffer.data(), result.ptr);
     }
