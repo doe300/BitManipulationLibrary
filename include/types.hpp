@@ -20,6 +20,9 @@
 
 namespace bml {
 
+  /**
+   * Mapping type for a single bit represented as a bool value.
+   */
   class Bit {
     static_assert(sizeof(bool) == 1);
 
@@ -42,7 +45,6 @@ namespace bml {
     }
 
     void read(BitReader &reader) { value = reader.read(); }
-
     void write(BitWriter &writer) const { writer.write(value); }
 
     friend std::ostream &operator<<(std::ostream &os, const Bit &bit) {
@@ -54,6 +56,11 @@ namespace bml {
     bool value;
   };
 
+  /**
+   * Mapping type for a fixed number of bits, represented as a numerical value.
+   *
+   * Reading and assignment of values has built-in bounds checks.
+   */
   template <std::size_t N, typename T = best_type<N>>
   class Bits {
   public:
@@ -113,7 +120,9 @@ namespace bml {
   };
 
   /**
-   * Byte-aligned number of full bytes.
+   * Mapping type for a (byte-)aligned fixed number of bytes, represented as a numerical value.
+   *
+   * Reading and assignment of values has built-in bounds checks.
    */
   template <std::size_t N, typename T = best_type<8 * N>, std::size_t ByteAlignment = 1>
   class Bytes : public Bits<8 * N, T> {
@@ -136,9 +145,19 @@ namespace bml {
     }
   };
 
+  /**
+   * Mapping type for a single aligned byte, represented as a numerical value.
+   *
+   * Reading and assignment of values has built-in bounds checks.
+   */
   template <typename T = uint8_t, std::size_t ByteAlignment = 1>
   using Byte = Bytes<1, T, ByteAlignment>;
 
+  /**
+   * Mapping type for a fixed number of bits with a fixed numerical value.
+   *
+   * Reading values has built-in checks against the expected fixed value.
+   */
   template <std::size_t N, auto Value, bool IgnoreInvalidValue = false>
   class FixedBits {
   public:
@@ -153,7 +172,6 @@ namespace bml {
     constexpr operator value_type() const noexcept { return Value; }
 
     void read(BitReader &reader) { checkValue(static_cast<value_type>(reader.read<best_type<N>>(BitCount{N}))); }
-
     void write(BitWriter &writer) const { writer.write(static_cast<best_type<N>>(Value), BitCount{N}); }
 
     friend std::ostream &operator<<(std::ostream &os, const FixedBits &) {
@@ -172,7 +190,9 @@ namespace bml {
   };
 
   /**
-   * Byte-aligned fixed-value entry.
+   * Mapping type for a (byte-)aligned fixed number of bytes with a fixed numerical value.
+   *
+   * Reading values has built-in checks against the expected fixed value.
    */
   template <std::size_t N, auto Value, std::size_t ByteAlignment = 1, bool IgnoreInvalidValue = false>
   class FixedBytes : public FixedBits<8 * N, Value, IgnoreInvalidValue> {
@@ -190,9 +210,17 @@ namespace bml {
     }
   };
 
+  /**
+   * Mapping type for an aligned single byte with a fixed numerical value.
+   *
+   * Reading values has built-in checks against the expected fixed value.
+   */
   template <auto Value, std::size_t ByteAlignment = 1, bool IgnoreInvalidValue = false>
   using FixedByte = FixedBytes<1, Value, ByteAlignment, IgnoreInvalidValue>;
 
+  /**
+   * Mapping type for a single aligned byte, represented as an 8-bit character.
+   */
   class Char : public Byte<char> {
     using Base = Byte<char>;
     static_assert(sizeof(char) == sizeof(std::byte));
@@ -210,6 +238,14 @@ namespace bml {
     friend std::ostream &operator<<(std::ostream &os, const Char &character) { return os << character.value; }
   };
 
+  /**
+   * Mapping type for a dynamically sized exponential-Golomb encoded unsigned integral value.
+   *
+   * The integral template type parameter only used for object-side storage and representation of the value and has no
+   * effect on the binary storage.
+   *
+   * See https://en.wikipedia.org/wiki/Exponential-Golomb_coding
+   */
   template <typename T = std::uintmax_t>
   class ExpGolombBits {
     static_assert(std::is_unsigned_v<T>);
@@ -233,7 +269,6 @@ namespace bml {
     }
 
     void read(BitReader &reader) { value = reader.readExpGolomb<value_type>(); }
-
     void write(BitWriter &writer) const { writer.writeExpGolomb(value); }
 
     friend std::ostream &operator<<(std::ostream &os, const ExpGolombBits &bits) { return os << bits.value; }
@@ -242,6 +277,14 @@ namespace bml {
     value_type value;
   };
 
+  /**
+   * Mapping type for a dynamically sized exponential-Golomb encoded signed integral value.
+   *
+   * The integral template type parameter only used for object-side storage and representation of the value and has no
+   * effect on the binary storage.
+   *
+   * See https://en.wikipedia.org/wiki/Exponential-Golomb_coding#Extension_to_negative_numbers
+   */
   template <typename T = std::intmax_t>
   class SignedExpGolombBits {
     static_assert(std::is_signed_v<T>);
@@ -265,7 +308,6 @@ namespace bml {
     }
 
     void read(BitReader &reader) { value = reader.readSignedExpGolomb<value_type>(); }
-
     void write(BitWriter &writer) const { writer.writeSignedExpGolomb(value); }
 
     friend std::ostream &operator<<(std::ostream &os, const SignedExpGolombBits &bits) { return os << bits.value; }
@@ -274,6 +316,16 @@ namespace bml {
     value_type value;
   };
 
+  /**
+   * Mapping type for an optional value represented by the first template type parameter and which present is determined
+   * by a single bit.
+   *
+   * This type can be used for binary data consisting of a single bit determining the presence/absence of the next
+   * element directly followed by the bits for this element.
+   *
+   * The template type parameter can be of any binary-mappable type (e.g. uint32_t, Bit, ExpGolombBits or a user-defined
+   * POD or complex type).
+   */
   template <typename T, bool OnSet = true>
   class OptionalBits {
   public:
@@ -350,9 +402,13 @@ namespace bml {
   };
 
   /**
-   * A list with a preceding number of entries.
+   * Mapping-type for a list of elements with a preceding fixed-size number of elements.
    *
-   * For a length value of N, this container stores N entries of the specified type.
+   * This type can be used to represent binary data consisting of a fixed-size number of elements followed directly by
+   * the given number of elements.
+   *
+   * The template type parameter can be of any binary-mappable type (e.g. uint32_t, Bit, ExpGolombBits or a user-defined
+   * POD or complex type).
    */
   template <std::size_t LengthBits, typename T>
   class BitList {
@@ -432,6 +488,12 @@ namespace bml {
     value_type value;
   };
 
+  /**
+   * Mapping-type for a byte-aligned fixed-size number characters (a fixed-size character string).
+   *
+   * This mapping type provides facilities for easier mapping to standard string types and prints its contained value as
+   * character string.
+   */
   template <std::size_t N>
   class Chars {
   public:
@@ -476,6 +538,9 @@ namespace bml {
     value_type value;
   };
 
+  /**
+   * Mapping-type for a list of characters with a preceding fixed-size number of elements (i.e. a "prefix string").
+   */
   template <std::size_t LengthBits>
   class PrefixString : public BitList<LengthBits, char> {
   public:
@@ -535,9 +600,13 @@ namespace bml {
   };
 
   /**
-   * A list with a preceding length in bytes.
+   * Mapping-type for a list of elements with a preceding fixed-size overall byte-size of all elements.
    *
-   * For a length value of N, this container stores the number of entries fitting into N bytes.
+   * This type can be used to represent binary data consisting of a fixed-size byte-size of the following entries
+   * directly followed by the elements up until the specified number of bytes are processed.
+   *
+   * The template type parameter can be of any binary-mappable type (e.g. uint32_t, Bit, ExpGolombBits or a user-defined
+   * POD or complex type).
    */
   template <std::size_t LengthBits, typename T>
   class SizedList {
@@ -611,6 +680,15 @@ namespace bml {
     value_type value;
   };
 
+  /**
+   * Mapping-type for a value which is padded to the specified number of bytes.
+   *
+   * This type can be used to represent binary data with a fixed total size, but dynamically sized content and trailing
+   * padding to fill up to the specified total size.
+   *
+   * The template type parameter can be of any binary-mappable type (e.g. uint32_t, Bit, ExpGolombBits or a user-defined
+   * POD or complex type).
+   */
   template <typename T, std::size_t Size, typename PadType, PadType PadValue>
   class PaddedValue {
   public:
@@ -662,6 +740,18 @@ namespace bml {
     value_type value;
   };
 
+  /**
+   * Mapping-type for a variant of values with all having the same fixed size.
+   *
+   * This type can be used to represent binary data of a fixed size which can contain values of different types
+   * (depending on some external factor, e.g. a preceding field).
+   *
+   * The template type parameter can be of any binary-mappable type (e.g. uint32_t, Bit, ExpGolombBits or a user-defined
+   * POD or complex type).
+   *
+   * NOTE: Since the selection of the "active" value within this fixed-size variant is external to this object, it
+   * cannot be read by its own.
+   */
   template <typename... Types>
   class FixedSizeVariant {
   public:
@@ -728,6 +818,11 @@ namespace bml {
     value_type value;
   };
 
+  /**
+   * Mapping-type for a padding value to achieve a specified alignment.
+   *
+   * This type can be used to represent padding up to a specific alignment.
+   */
   template <std::size_t Alignment, bool Value, bool IgnoreInvalidValue = false, typename T = best_type<Alignment>>
   class AlignmentBits {
   public:

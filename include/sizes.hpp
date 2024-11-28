@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <type_traits>
 
 namespace bml {
@@ -99,6 +100,12 @@ namespace bml {
           return std::numeric_limits<std::uintmax_t>::max();
         return (std::uintmax_t{1} << bits()) - 1U;
       }
+
+      template <std::size_t N = Size>
+      std::enable_if_t<N == 1, std::string> toString() const;
+
+      template <std::size_t N = Size>
+      std::enable_if_t<N == 8, std::string> toString() const;
 
       std::size_t num = 0;
     };

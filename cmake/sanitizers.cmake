@@ -44,7 +44,7 @@ if(BML_BUILD_COVERAGE)
   add_link_options(-fprofile-arcs -ftest-coverage)
 
   add_custom_target(CollectCoverage
-    COMMAND lcov --quiet --base-directory ${PROJECT_SOURCE_DIR} --directory . --exclude ${PROJECT_BINARY_DIR} --no-external --capture --output-file Testing/coverage.info
+    COMMAND lcov --quiet --base-directory ${PROJECT_SOURCE_DIR} --directory . --exclude ${PROJECT_BINARY_DIR} --exclude ${PROJECT_SOURCE_DIR}/test --no-external --capture --output-file Testing/coverage.info
     COMMAND genhtml --quiet Testing/coverage.info --output-directory=Testing/coverage_report
     WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
   )

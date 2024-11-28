@@ -12,6 +12,9 @@
 
 namespace bml {
 
+  /**
+   * Returns the fixed number of binary data bits for the specified integral or enum type.
+   */
   template <typename T>
   constexpr std::size_t bits() noexcept
     requires(std::integral<T> || std::is_enum_v<T>)
@@ -19,23 +22,28 @@ namespace bml {
     return std::numeric_limits<std::make_unsigned_t<T>>::digits;
   }
 
+  /**
+   * Returns the fixed number of binary data bits for the bool type.
+   */
   template <>
   constexpr std::size_t bits<bool>() noexcept {
     return 1U;
   }
 
-  constexpr uintmax_t mask(BitCount numBits) noexcept {
-    if (numBits.value() == std::numeric_limits<uintmax_t>::digits)
-      return static_cast<uintmax_t>(-1);
-    return (uintmax_t{1} << numBits) - 1U;
-  }
-
+  /**
+   * Helper type to determine the best unsigned integral type to store the specified number of bits.
+   */
   template <std::size_t N>
   using best_type =
       std::conditional_t<N <= bits<uint8_t>(), uint8_t,
                          std::conditional_t<N <= bits<uint16_t>(), uint16_t,
                                             std::conditional_t<N <= bits<uint32_t>(), uint32_t, uint64_t>>>;
 
+  /**
+   * Encodes the given unsigned integral value with the Exponential-Golomb coding and returns a pair consisting of:
+   * - the encoded value
+   * - the number of bits required to store the value (leading bits are filled with zeroes)
+   */
   template <std::unsigned_integral T>
   constexpr std::pair<best_type<2 * bits<T>() + 1>, BitCount> encodeExpGolomb(T value) noexcept {
     ++value;
@@ -43,24 +51,41 @@ namespace bml {
     return std::make_pair(best_type<2 * bits<T>() + 1>{value}, static_cast<BitCount>(numBits * 2 + 1));
   }
 
+  /**
+   * Decodes the given Exponential-Golomb encoded value into its underlying unsigned integral value.
+   */
   template <std::unsigned_integral T>
   constexpr T decodeExpGolomb(T value) noexcept {
     return value - 1U;
   }
 
+  /**
+   * Returns a string containing a hexadecimal representation of the given value with the given number of bytes.
+   */
   std::string toHexString(std::uintmax_t value, ByteCount typeSize, bool withPrefix = true) noexcept;
 
+  /**
+   * Returns a string containing a hexadecimal representation of the given value with the given number of bytes.
+   */
   template <std::unsigned_integral T>
   std::string toHexString(T value, bool withPrefix = true) noexcept {
     return toHexString(static_cast<std::uintmax_t>(value), ByteCount{sizeof(T)}, withPrefix);
   }
 
+  /**
+   * Encodes the given signed integral value with the Exponential-Golomb coding and returns a pair consisting of:
+   * - the encoded value
+   * - the number of bits required to store the value (leading bits are filled with zeroes)
+   */
   template <std::signed_integral T>
   constexpr std::pair<best_type<2 * bits<T>() + 1>, BitCount> encodeSignedExpGolomb(T value) noexcept {
     auto tmp = value < 0 ? (-2 * value) : value > 0 ? (2 * value - 1) : 0;
     return encodeExpGolomb(std::bit_cast<std::make_unsigned_t<T>>(tmp));
   }
 
+  /**
+   * Decodes the given Exponential-Golomb encoded value into its underlying signed integral value.
+   */
   template <std::unsigned_integral T>
   constexpr std::intmax_t decodeSignedExpGolomb(T value) noexcept {
     auto tmp = decodeExpGolomb(value);
@@ -72,6 +97,12 @@ namespace bml {
   void writeBits(std::ostream &os, std::uintmax_t value, BitCount numBits);
   void writeBits(std::ostream &os, std::intmax_t value, BitCount numBits);
 
+  /**
+   * Writes a string representation of the given value and number of valid bits to the given output stream.
+   *
+   * Bit widths of less than 8 are written as binary literal (with "0b" prefix) while any larger bit widths are written
+   * as hexadecimal literal (with "0x" prefix).
+   */
   template <typename T>
   void writeBits(std::ostream &os, T value, BitCount numBits = BitCount{bits<T>()})
     requires(std::integral<T> || std::is_enum_v<T>)

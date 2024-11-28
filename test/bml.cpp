@@ -92,7 +92,6 @@ struct TestHelper : public Test::Suite {
 public:
   TestHelper() : Test::Suite("Helper") {
     TEST_ADD(TestHelper::testBits);
-    TEST_ADD(TestHelper::testMask);
     TEST_ADD(TestHelper::testEncodeExpGolomb);
     TEST_ADD(TestHelper::testDecodeExpGolomb);
     TEST_ADD(TestHelper::testEncodeSignedExpGolomb);
@@ -105,14 +104,6 @@ public:
     static_assert(bits<uint8_t>() == 8);
     static_assert(bits<uint32_t>() == 32);
     TEST_ASSERT_EQUALS(1U, bits<bool>());
-  }
-
-  void testMask() {
-    static_assert(mask(0_bits) == 0);
-    static_assert(mask(1_bits) == 0b1);
-    static_assert(mask(32_bits) == 0xFFFFFFFF);
-    static_assert(mask(64_bits) == 0xFFFFFFFFFFFFFFFF);
-    static_assert(mask(8_bytes) == 0xFFFFFFFFFFFFFFFF);
   }
 
   void testEncodeExpGolomb() {
@@ -212,7 +203,7 @@ protected:
     BitReader reader{data};
     T value{};
     TEST_THROWS_NOTHING(bml::read(reader, value));
-    TEST_ASSERT_EQUALS(numBits.value(), reader.position().value());
+    TEST_ASSERT_EQUALS(numBits, reader.position());
     TEST_ASSERT_EQUALS(expectedValue, value);
   }
 
@@ -223,7 +214,7 @@ protected:
     std::vector<std::byte> data(expectedData.size());
     BitWriter writer{data};
     TEST_THROWS_NOTHING(bml::write(writer, value));
-    TEST_ASSERT_EQUALS(numBits.value(), writer.position().value());
+    TEST_ASSERT_EQUALS(numBits, writer.position());
     writer.fillToAligment(1_bytes, 0);
     TEST_ASSERT_EQUALS(expectedData, data);
   }
@@ -234,7 +225,7 @@ protected:
   {
     BitReader reader{data};
     TEST_THROWS_NOTHING(bml::skip<T>(reader));
-    TEST_ASSERT_EQUALS(numBits.value(), reader.position().value());
+    TEST_ASSERT_EQUALS(numBits, reader.position());
   }
 
   template <typename T>
@@ -245,8 +236,8 @@ protected:
     std::vector<std::byte> data(expectedData.size());
     BitWriter writer{data};
     TEST_THROWS_NOTHING(bml::copy<T>(reader, writer));
-    TEST_ASSERT_EQUALS(numBits.value(), reader.position().value());
-    TEST_ASSERT_EQUALS(numBits.value(), writer.position().value());
+    TEST_ASSERT_EQUALS(numBits, reader.position());
+    TEST_ASSERT_EQUALS(numBits, writer.position());
     writer.fillToAligment(1_bytes, 0);
     TEST_ASSERT_EQUALS(expectedData, data);
   }
@@ -264,13 +255,13 @@ protected:
   void checkSize(const T &val, BitCount expectedSize, bool fixedSize)
     requires(Sized<T>)
   {
-    TEST_ASSERT(bml::minNumBits<T>().value() <= expectedSize.value());
-    TEST_ASSERT_EQUALS(expectedSize.value(), bml::numBits(val).value());
-    TEST_ASSERT(bml::maxNumBits<T>().value() >= expectedSize.value());
+    TEST_ASSERT(bml::minNumBits<T>() <= expectedSize);
+    TEST_ASSERT_EQUALS(expectedSize, bml::numBits(val));
+    TEST_ASSERT(bml::maxNumBits<T>() >= expectedSize);
     if (fixedSize) {
-      TEST_ASSERT_EQUALS(bml::minNumBits<T>().value(), bml::maxNumBits<T>().value());
+      TEST_ASSERT_EQUALS(bml::minNumBits<T>(), bml::maxNumBits<T>());
     } else {
-      TEST_ASSERT_NOT_EQUALS(bml::minNumBits<T>().value(), bml::maxNumBits<T>().value());
+      TEST_ASSERT_NOT_EQUALS(bml::minNumBits<T>(), bml::maxNumBits<T>());
     }
   }
 };
@@ -893,13 +884,13 @@ public:
 
     static_assert(minNumBits<std::unique_ptr<std::byte>>() == 0_bits);
     static_assert(maxNumBits<std::unique_ptr<std::byte>>() == 8_bits);
-    TEST_ASSERT_EQUALS(0U, numBits(std::unique_ptr<std::byte>{}).value());
-    TEST_ASSERT_EQUALS(8U, numBits(std::make_unique<std::byte>(std::byte{0x11})).value());
+    TEST_ASSERT_EQUALS(0_bits, numBits(std::unique_ptr<std::byte>{}));
+    TEST_ASSERT_EQUALS(1_bytes, numBits(std::make_unique<std::byte>(std::byte{0x11})));
 
     static_assert(minNumBits<std::vector<std::byte>>() == 0_bits);
     static_assert(maxNumBits<std::vector<std::byte>>() != 24_bits);
-    TEST_ASSERT_EQUALS(0U, numBits(std::vector<std::byte>{}).value());
-    TEST_ASSERT_EQUALS(16U, numBits(std::vector<std::byte>{std::byte{0x10}, std::byte{0x11}}).value());
+    TEST_ASSERT_EQUALS(0_bits, numBits(std::vector<std::byte>{}));
+    TEST_ASSERT_EQUALS(2_bytes, numBits(std::vector<std::byte>{std::byte{0x10}, std::byte{0x11}}));
 
     static_assert(minNumBits<std::variant<std::byte, POD>>() == 8_bits);
     static_assert(maxNumBits<std::variant<std::byte, POD>>() == 9_bytes);
@@ -911,9 +902,9 @@ public:
     std::array<std::byte, 4> DATA{std::byte{0x14}, std::byte{0x04}, std::byte{0x10}, std::byte{0x11}};
     BitReader reader{DATA};
     TEST_ASSERT_FALSE(readOptional<uint32_t>(reader, false));
-    TEST_ASSERT_EQUALS(0U, reader.position().value());
+    TEST_ASSERT_EQUALS(0_bits, reader.position());
     TEST_ASSERT_EQUALS(0x14041011U, readOptional<uint32_t>(reader, true));
-    TEST_ASSERT_EQUALS(32U, reader.position().value());
+    TEST_ASSERT_EQUALS(4_bytes, reader.position());
   }
 };
 
@@ -1284,7 +1275,7 @@ private:
           if (output.size >= sizeof(std::uintmax_t) * 1_bytes)
             return false;
           std::uintmax_t tmp = static_cast<uint8_t>(nextByte);
-          output.value |= tmp << (sizeof(std::uintmax_t) * 1_bytes - 1_bytes - output.size).value();
+          output.value |= tmp << (sizeof(std::uintmax_t) * 1_bytes - 1_bytes - output.size);
           output.size += 1_bytes;
           return true;
         },
@@ -1306,7 +1297,7 @@ private:
           if (output.size >= sizeof(std::uintmax_t) * 1_bytes)
             return false;
           std::uintmax_t tmp = static_cast<uint8_t>(nextByte);
-          output.value |= tmp << (sizeof(std::uintmax_t) * 1_bytes - 1_bytes - output.size).value();
+          output.value |= tmp << (sizeof(std::uintmax_t) * 1_bytes - 1_bytes - output.size);
           output.size += 1_bytes;
           return true;
         },
@@ -1315,10 +1306,90 @@ private:
   }
 };
 
+class TestSizes : public Test::Suite {
+public:
+  TestSizes() : Test::Suite("Sizes") {
+    TEST_ADD(TestSizes::testBasic);
+    TEST_ADD(TestSizes::testArithmetic);
+    TEST_ADD(TestSizes::testShift);
+    TEST_ADD(TestSizes::testFunctions);
+  }
+
+  void testBasic() {
+    static_assert(!0_bytes);
+    static_assert(1_bits);
+    static_assert(1_bytes == 8_bits);
+    static_assert(1_bytes != 7_bits);
+    static_assert(1_bytes > 7_bits);
+    TEST_ASSERT_EQUALS(7U, static_cast<std::size_t>(7_bits));
+    TEST_ASSERT_EQUALS(17U, (17_bytes).value());
+    TEST_ASSERT_FALSE(1_bytes < 7_bits);
+  }
+
+  void testArithmetic() {
+    static_assert((1_bytes + 7_bits).value() == 15);
+    static_assert(1_bytes - 7_bits == 1_bits);
+    static_assert(1_bytes / 7_bits == 1);
+    static_assert(7_bits / 1_bytes == 0);
+    static_assert(1_bytes % 7_bits == 1_bits);
+    static_assert(7_bits % 1_bytes == 7_bits);
+    static_assert(1_bytes * 7 == 7_bytes);
+    static_assert(7 * 1_bytes == 7_bytes);
+    static_assert(1_bytes / 7 == 0_bytes);
+    static_assert(7_bytes / 2 == 3_bytes);
+    static_assert(7_bytes % 2 == 1);
+
+    auto b = 17_bits;
+    TEST_ASSERT_EQUALS(19_bits, b += 2_bits);
+    TEST_ASSERT_EQUALS(27_bits, b += 1_bytes);
+    TEST_ASSERT_EQUALS(11_bits, b -= 2_bytes);
+    TEST_ASSERT_EQUALS(22_bits, b *= 2);
+    TEST_ASSERT_EQUALS(21_bits, --b);
+    TEST_ASSERT_EQUALS(22_bits, ++b);
+  }
+
+  void testShift() {
+    static_assert((17 >> 0_bits) == 17);
+    static_assert((17 >> 2_bits) == 4);
+    static_assert((17 >> 7_bits) == 0);
+    static_assert((17 << 0_bits) == 17);
+    static_assert((17 << 2_bits) == 68);
+    static_assert(7_bits < 1_bytes);
+    static_assert(7_bytes > 1_bytes);
+
+    uint32_t u = 0xFEAD;
+    TEST_ASSERT_EQUALS(0xFEAU, u >>= 4_bits);
+    TEST_ASSERT_EQUALS(0xFEA00U, u <<= 1_bytes);
+  }
+
+  void testFunctions() {
+    static_assert((7_bytes).bits() == 56);
+    static_assert((7_bits).mask() == 0x7F);
+    static_assert((7_bytes).mask() == 0x00FFFFFFFFFFFFFF);
+    static_assert((0_bits).mask() == 0);
+    static_assert((1_bits).mask() == 0b1);
+    static_assert((32_bits).mask() == 0xFFFFFFFF);
+    static_assert((64_bits).mask() == 0xFFFFFFFFFFFFFFFF);
+    static_assert((8_bytes).mask() == 0xFFFFFFFFFFFFFFFF);
+
+    std::array<std::byte, 16> buf{};
+    auto *ptr = buf.data() + 13_bytes;
+    TEST_ASSERT_EQUALS(13, std::distance(buf.data(), ptr));
+
+    TEST_ASSERT_EQUALS("17b", (17_bits).toString());
+    TEST_ASSERT_EQUALS("2kb", (2048_bits).toString());
+    TEST_ASSERT_EQUALS("2.1kb", (2148_bits).toString());
+    TEST_ASSERT_EQUALS("325B", (325_bytes).toString());
+    TEST_ASSERT_EQUALS("325MB", (340787200_bytes).toString());
+    TEST_ASSERT_EQUALS("334.54MB", (350787200_bytes).toString());
+  }
+};
+
 int main(int argc, char **argv) {
   Test::registerSuite(Test::newInstance<TestHelper>, "helper");
   Test::registerSuite(Test::newInstance<TestIO>, "io");
   Test::registerSuite(Test::newInstance<TestTypes>, "types");
   Test::registerSuite(Test::newInstance<TestCache>, "cache");
+  Test::registerSuite(Test::newInstance<TestSizes>, "sizes");
   return Test::runSuites(argc, argv);
 }

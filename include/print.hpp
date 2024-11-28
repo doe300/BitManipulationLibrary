@@ -11,6 +11,51 @@ namespace bml {
 
     template <typename Type>
     struct PrintView;
+  } // namespace detail
+
+  /**
+   * Wraps the given read-only reference in a PrintView.
+   *
+   * The wrapped PrintView object can be written to an output stream via the stream output operator (<<).
+   *
+   * This enables usage of different functions for printing (e.g. member toString(), to_string()) as well as addition of
+   * printing support for standard-library types (e.g. tuple, variant).
+   */
+  template <typename Type>
+  detail::PrintView<Type> printView(const Type &val) {
+    return detail::PrintView{val};
+  }
+
+/**
+ * Defines a stream output friend operator (<<) for this type writing all members as key-value pairs using the member
+ * name as key.
+ *
+ * Also defines the DESTRUCTURE_MEMBERS helper constant used to determine the number of members to
+ * read/write/copy/skip/etc. if no custom member functions are defined.
+ */
+#define BML_DEFINE_PRINT(Type, ...)                                                                                    \
+  friend std::ostream &operator<<(std::ostream &os, const Type &obj) {                                                 \
+    obj.printInner(os);                                                                                                \
+    return os;                                                                                                         \
+  }                                                                                                                    \
+                                                                                                                       \
+private:                                                                                                               \
+  void printInner(std::ostream &os) const {                                                                            \
+    static const auto NAMES = #__VA_ARGS__; /* are stringified as single string with commas */                         \
+    os << #Type << '{';                                                                                                \
+    detail::printMember(os, NAMES, __VA_ARGS__);                                                                       \
+    os << '}';                                                                                                         \
+  }                                                                                                                    \
+                                                                                                                       \
+public:                                                                                                                \
+  /* This is used to correctly determine the number of members for I/O of polymorphic types.                           \
+   */                                                                                                                  \
+  static constexpr std::size_t DESTRUCTURE_MEMBERS = []() {                                                            \
+    constexpr auto NAMES = #__VA_ARGS__;                                                                               \
+    return std::count(NAMES, NAMES + std::size(#__VA_ARGS__), ',') + 1;                                                \
+  }();
+
+  namespace detail {
 
     template <typename Type>
     concept IsPrintable = requires(const Type &obj, std::ostream &out) {
@@ -171,32 +216,5 @@ namespace bml {
       printMember(os, names.substr(nameEnd + 2), tail...);
     }
   } // namespace detail
-
-  template <typename Type>
-  detail::PrintView<Type> printView(const Type &val) {
-    return detail::PrintView{val};
-  }
-
-#define BML_DEFINE_PRINT(Type, ...)                                                                                    \
-  friend std::ostream &operator<<(std::ostream &os, const Type &obj) {                                                 \
-    obj.printInner(os);                                                                                                \
-    return os;                                                                                                         \
-  }                                                                                                                    \
-                                                                                                                       \
-private:                                                                                                               \
-  void printInner(std::ostream &os) const {                                                                            \
-    static const auto NAMES = #__VA_ARGS__; /* are stringified as single string with commas */                         \
-    os << #Type << '{';                                                                                                \
-    detail::printMember(os, NAMES, __VA_ARGS__);                                                                       \
-    os << '}';                                                                                                         \
-  }                                                                                                                    \
-                                                                                                                       \
-public:                                                                                                                \
-  /* This is used to correctly determine the number of members for I/O of polymorphic types.                           \
-   */                                                                                                                  \
-  static constexpr std::size_t DESTRUCTURE_MEMBERS = []() {                                                            \
-    constexpr auto NAMES = #__VA_ARGS__;                                                                               \
-    return std::count(NAMES, NAMES + std::size(#__VA_ARGS__), ',') + 1;                                                \
-  }();
 
 } // namespace bml

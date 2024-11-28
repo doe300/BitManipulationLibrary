@@ -1,7 +1,7 @@
 #pragma once
 
 #include "destructure.hpp"
-#include "helper.hpp"
+#include "io_internal.hpp"
 #include "reader.hpp"
 #include "sizes.hpp"
 #include "writer.hpp"
@@ -18,230 +18,13 @@
 
 namespace bml {
 
-  namespace detail {
-    template <typename Type>
-    concept HasReadMember = requires(Type &obj, BitReader &reader) { obj.read(reader); };
-
-    template <typename Type>
-    concept HasWriteMember = requires(const Type &obj, BitWriter &writer) { obj.write(writer); };
-
-    template <typename Type>
-    concept HasSkipMember = requires(BitReader &reader) { Type::skip(reader); };
-
-    template <typename Type>
-    concept HasCopyMember = requires(BitReader &reader, BitWriter &writer) { Type::copy(reader, writer); };
-
-    template <BitCount B>
-    void checkConstexpr();
-
-    template <typename Type>
-    concept HasMinMaxSizeMembers = requires() {
-      { Type::minNumBits() } -> std::convertible_to<BitCount>;
-      { Type::maxNumBits() } -> std::convertible_to<BitCount>;
-      // Check whether the values returned by the functions can be used in a context that requires constant expression
-      checkConstexpr<Type::minNumBits()>;
-      checkConstexpr<Type::maxNumBits()>;
-    };
-
-    template <typename Type>
-    concept HasSizeMembers = HasMinMaxSizeMembers<Type> && requires(const Type &obj) {
-      { obj.numBits() } -> std::convertible_to<BitCount>;
-    };
-
-    template <typename Type>
-    concept HasFixedSizeMembers = HasMinMaxSizeMembers<Type> && Type::minNumBits() == Type::maxNumBits();
-
-    template <typename Type>
-    concept IsEnum = std::is_enum_v<Type>;
-
-    template <typename Type>
-    struct ArrayHelper : std::false_type {};
-
-    template <typename Type, std::size_t N>
-    struct ArrayHelper<std::array<Type, N>> : std::true_type {
-      using value_type = Type;
-    };
-
-    template <typename Type>
-    concept IsArray = ArrayHelper<Type>::value;
-
-    template <typename Type>
-    struct TupleHelper : std::false_type {};
-
-    template <typename... Types>
-    struct TupleHelper<std::tuple<Types...>> : std::true_type {
-      static void skip(BitReader &reader);
-      static void copy(BitReader &reader, BitWriter &writer);
-    };
-
-    template <typename Type>
-    concept IsTuple = TupleHelper<Type>::value;
-
-    template <typename Type>
-    struct AllowedDestructurableHelper {
-      // These should be handled via simpler implementations
-      static constexpr bool value = !std::is_integral_v<Type> && !std::is_enum_v<Type>;
-    };
-
-    // while these are technically "destructurable", using their members would behave wrongly!
-    template <typename Type>
-    struct AllowedDestructurableHelper<std::unique_ptr<Type>> : std::false_type {};
-
-    template <typename Type>
-    struct AllowedDestructurableHelper<std::optional<Type>> : std::false_type {};
-
-    template <typename Type>
-    struct AllowedDestructurableHelper<std::vector<Type>> : std::false_type {};
-
-    template <typename Type, std::size_t N>
-    struct AllowedDestructurableHelper<std::array<Type, N>> : std::false_type {};
-
-    template <typename... Types>
-    struct AllowedDestructurableHelper<std::variant<Types...>> : std::false_type {};
-
-    template <typename Type>
-    concept AllowedDestructurable = AllowedDestructurableHelper<Type>::value && Destructurable<Type>;
-
-    template <typename Type>
-    struct SizeHelper;
-
-    template <HasMinMaxSizeMembers Type>
-    struct SizeHelper<Type> {
-      static constexpr BitCount calcMinNumBits() noexcept { return Type::minNumBits(); }
-      static constexpr BitCount calcMaxNumBits() noexcept { return Type::maxNumBits(); }
-      static constexpr bool isFixedSize() noexcept { return Type::minNumBits() == Type::maxNumBits(); }
-    };
-
-    template <>
-    struct SizeHelper<bool> {
-      static constexpr BitCount calcMinNumBits() noexcept { return 1_bits; }
-      static constexpr BitCount calcMaxNumBits() noexcept { return 1_bits; }
-      static constexpr bool isFixedSize() noexcept { return true; }
-    };
-
-    template <>
-    struct SizeHelper<std::byte> {
-      static constexpr BitCount calcMinNumBits() noexcept { return 1_bytes; }
-      static constexpr BitCount calcMaxNumBits() noexcept { return 1_bytes; }
-      static constexpr bool isFixedSize() noexcept { return true; }
-    };
-
-    template <typename Type>
-    struct SizeHelper<std::optional<Type>> {
-      static constexpr BitCount calcMinNumBits() noexcept { return 0_bits; }
-      static constexpr BitCount calcMaxNumBits() noexcept { return SizeHelper<Type>::calcMaxNumBits(); }
-      static constexpr bool isFixedSize() noexcept { return false; }
-    };
-
-    template <typename Type>
-    struct SizeHelper<std::unique_ptr<Type>> {
-      static constexpr BitCount calcMinNumBits() noexcept { return 0_bits; }
-      static constexpr BitCount calcMaxNumBits() noexcept { return SizeHelper<Type>::calcMaxNumBits(); }
-      static constexpr bool isFixedSize() noexcept { return false; }
-    };
-
-    template <typename Type>
-    struct SizeHelper<std::vector<Type>> {
-      static constexpr BitCount calcMinNumBits() noexcept { return 0_bits; }
-      static constexpr BitCount calcMaxNumBits() noexcept {
-        return BitCount{std::numeric_limits<std::size_t>::max() /
-                        32 /* be big enough, but avoid overflow on addition with other sizes */};
-      }
-      static constexpr bool isFixedSize() noexcept { return false; }
-    };
-
-    template <typename Type, std::size_t N>
-    struct SizeHelper<std::array<Type, N>> {
-      static constexpr BitCount calcMinNumBits() noexcept { return SizeHelper<Type>::calcMinNumBits() * N; }
-      static constexpr BitCount calcMaxNumBits() noexcept { return SizeHelper<Type>::calcMaxNumBits() * N; }
-      static constexpr bool isFixedSize() noexcept { return SizeHelper<Type>::isFixedSize(); }
-    };
-
-    template <typename... Types>
-    struct SizeHelper<std::tuple<Types...>> {
-      static constexpr BitCount calcMinNumBits() noexcept { return (SizeHelper<Types>::calcMinNumBits() + ...); }
-      static constexpr BitCount calcMaxNumBits() noexcept { return (SizeHelper<Types>::calcMaxNumBits() + ...); }
-      static constexpr bool isFixedSize() noexcept { return (SizeHelper<Types>::isFixedSize() && ...); }
-    };
-
-    template <typename... Types>
-    struct SizeHelper<std::variant<Types...>> {
-      static constexpr BitCount calcMinNumBits() noexcept { return std::min({SizeHelper<Types>::calcMinNumBits()...}); }
-      static constexpr BitCount calcMaxNumBits() noexcept { return std::max({SizeHelper<Types>::calcMaxNumBits()...}); }
-      static constexpr bool isFixedSize() noexcept {
-        if constexpr ((SizeHelper<Types>::isFixedSize() && ...)) {
-          return calcMinNumBits() == calcMaxNumBits();
-        }
-        return false;
-      }
-    };
-
-    template <std::integral Type>
-    struct SizeHelper<Type> {
-      static constexpr BitCount calcMinNumBits() noexcept { return bml::BitCount{bml::bits<Type>()}; }
-      static constexpr BitCount calcMaxNumBits() noexcept { return bml::BitCount{bml::bits<Type>()}; }
-      static constexpr bool isFixedSize() noexcept { return true; }
-    };
-
-    template <std::floating_point Type>
-    struct SizeHelper<Type> {
-      static constexpr BitCount calcMinNumBits() noexcept {
-        return bml::BitCount{bml::bits<best_type<sizeof(Type) * 8>>()};
-      }
-      static constexpr BitCount calcMaxNumBits() noexcept {
-        return bml::BitCount{bml::bits<best_type<sizeof(Type) * 8>>()};
-      }
-      static constexpr bool isFixedSize() noexcept { return true; }
-    };
-
-    template <typename Type>
-    struct DestructureSizeHelper {
-      static constexpr BitCount calcMinNumBits() noexcept = delete;
-      static constexpr BitCount calcMaxNumBits() noexcept = delete;
-      static constexpr bool isFixedSize() noexcept { return false; }
-    };
-
-    template <AllowedDestructurable Type>
-    struct DestructureSizeHelper<Type> {
-      static constexpr BitCount calcMinNumBits() noexcept {
-        return SizeHelper<decltype(detail::destructure(std::declval<Type>()))>::calcMinNumBits();
-      }
-      static constexpr BitCount calcMaxNumBits() noexcept {
-        return SizeHelper<decltype(detail::destructure(std::declval<Type>()))>::calcMaxNumBits();
-      }
-
-      static constexpr bool isFixedSize() noexcept { return calcMinNumBits() == calcMaxNumBits(); }
-    };
-
-    template <typename Type>
-    struct SizeHelper : DestructureSizeHelper<Type> {};
-
-    template <typename Type>
-    struct SizeHelper<Type &> : SizeHelper<Type> {};
-
-    template <IsEnum Type>
-    struct SizeHelper<Type> : SizeHelper<std::underlying_type_t<Type>> {};
-
-    template <typename Type>
-    void readMembers(BitReader &reader, Type &object);
-
-    template <typename Type>
-    void writeMembers(BitWriter &writer, const Type &object);
-
-    template <typename Type>
-    constexpr BitCount numBitsMembers(const Type &object) noexcept;
-
-    template <typename... Types>
-    void copyMembers(BitReader &reader, BitWriter &writer);
-
-    template <typename... Types>
-    void skipMembers(BitReader &reader);
-  } // namespace detail
-
   ////
   // READ
   ////
 
+  /**
+   * Reads from the given BitReader into the given output object using its member read() function.
+   */
   template <typename Type>
   void read(BitReader &reader, Type &value)
     requires(detail::HasReadMember<Type>)
@@ -249,6 +32,9 @@ namespace bml {
     value.read(reader);
   }
 
+  /**
+   * Reads a single bit from the given BitReader into the given output value.
+   */
   template <typename Type>
   void read(BitReader &reader, Type &value)
     requires(std::is_same_v<Type, bool>)
@@ -256,6 +42,9 @@ namespace bml {
     value = reader.read();
   }
 
+  /**
+   * Reads a fixed-size unsigned integral value from the given BitReader into the given output value.
+   */
   template <typename Type>
   void read(BitReader &reader, Type &value)
     requires(std::is_unsigned_v<Type> && !std::is_same_v<Type, bool>)
@@ -263,6 +52,9 @@ namespace bml {
     value = reader.read<Type>(sizeof(Type) * 1_bytes);
   }
 
+  /**
+   * Reads a fixed-size signed integral value from the given BitReader into the given output value.
+   */
   template <typename Type>
   void read(BitReader &reader, Type &value)
     requires(std::is_signed_v<Type>)
@@ -270,6 +62,9 @@ namespace bml {
     value = std::bit_cast<Type>(reader.read<std::make_unsigned_t<Type>>(sizeof(Type) * 1_bytes));
   }
 
+  /**
+   * Reads a fixed-size numerical value from the given BitReader into the given output object enum value.
+   */
   template <typename Type>
   void read(BitReader &reader, Type &value)
     requires(std::is_enum_v<Type>)
@@ -277,6 +72,9 @@ namespace bml {
     value = static_cast<Type>(reader.read<std::underlying_type_t<Type>>(sizeof(Type) * 1_bytes));
   }
 
+  /**
+   * Reads from the given BitReader into the given output object using member-wise read.
+   */
   template <typename Type>
   void read(BitReader &reader, Type &object)
     requires(!detail::HasReadMember<Type> && detail::AllowedDestructurable<Type>)
@@ -284,6 +82,9 @@ namespace bml {
     detail::readMembers(reader, object);
   }
 
+  /**
+   * Reads all elements from the given BitReader into the given output array.
+   */
   template <typename Type, std::size_t N>
   void read(BitReader &reader, std::array<Type, N> &value)
     requires requires(Type obj, BitReader reader) { bml::read(reader, obj); }
@@ -293,6 +94,9 @@ namespace bml {
     }
   }
 
+  /**
+   * Reads all elements from the given BitReader into the given output object tuple.
+   */
   template <typename... Types>
   void read(BitReader &reader, std::tuple<Types...> &value)
     requires(requires(Types obj, BitReader reader) { bml::read(reader, obj); } && ...)
@@ -300,6 +104,9 @@ namespace bml {
     std::apply([&reader](auto &...args) { (read(reader, args), ...); }, value);
   }
 
+  /**
+   * Reads an object of the specific type from the given BitReader if the given condition is true.
+   */
   template <typename Type>
   std::optional<Type> readOptional(BitReader &reader, bool condition) {
     if (condition) {
@@ -310,6 +117,9 @@ namespace bml {
     return std::optional<Type>{};
   }
 
+  /**
+   * Reads an object of the specific type from the given BitReader.
+   */
   template <typename T>
   T read(BitReader &reader) {
     T tmp{};
@@ -321,6 +131,9 @@ namespace bml {
   // WRITE
   ////
 
+  /**
+   * Writes the given object to the given BitWriter using its member write() function.
+   */
   template <typename Type>
   void write(BitWriter &writer, const Type &value)
     requires(detail::HasWriteMember<Type>)
@@ -328,6 +141,9 @@ namespace bml {
     value.write(writer);
   }
 
+  /**
+   * Writes the given boolean value to the given BitWriter as a single bit.
+   */
   template <typename Type>
   void write(BitWriter &writer, const Type &value)
     requires(std::is_same_v<Type, bool>)
@@ -335,6 +151,9 @@ namespace bml {
     writer.write(value);
   }
 
+  /**
+   * Writes the given fixed-size unsigned integral value to the given BitWriter.
+   */
   template <typename Type>
   void write(BitWriter &writer, const Type &value)
     requires(std::is_unsigned_v<Type> && !std::is_same_v<Type, bool>)
@@ -342,6 +161,9 @@ namespace bml {
     writer.write(value, sizeof(Type) * 1_bytes);
   }
 
+  /**
+   * Writes the given fixed-size signed integral value to the given BitWriter.
+   */
   template <typename Type>
   void write(BitWriter &writer, const Type &value)
     requires(std::is_signed_v<Type>)
@@ -349,6 +171,9 @@ namespace bml {
     writer.write(std::bit_cast<std::make_unsigned_t<Type>>(value), sizeof(Type) * 1_bytes);
   }
 
+  /**
+   * Writes the given fixed-size enum value to the given BitWriter.
+   */
   template <typename Type>
   void write(BitWriter &writer, const Type &value)
     requires(std::is_enum_v<Type>)
@@ -356,10 +181,16 @@ namespace bml {
     writer.write(static_cast<std::underlying_type_t<Type>>(value), sizeof(Type) * 1_bytes);
   }
 
+  /**
+   * Writes the given byte to the given BitWriter.
+   */
   inline void write(BitWriter &writer, const std::byte &value) {
     writer.write(static_cast<uint8_t>(value), ByteCount{1});
   }
 
+  /**
+   * Writes the given object to the given BitWriter using member-wise write.
+   */
   template <typename Type>
   void write(BitWriter &writer, const Type &object)
     requires(!detail::HasWriteMember<Type> && detail::AllowedDestructurable<Type>)
@@ -367,6 +198,9 @@ namespace bml {
     detail::writeMembers(writer, object);
   }
 
+  /**
+   * Writes the given pointed-to value to the given BitWriter if present.
+   */
   template <typename Type>
   void write(BitWriter &writer, const std::unique_ptr<Type> &value)
     requires requires(const Type &obj, BitWriter writer) { bml::write(writer, obj); }
@@ -376,6 +210,9 @@ namespace bml {
     }
   }
 
+  /**
+   * Writes the given list of objects to the given BitWriter by writing all elements.
+   */
   template <typename Type>
   void write(BitWriter &writer, const std::vector<Type> &value)
     requires requires(const Type &obj, BitWriter writer) { bml::write(writer, obj); }
@@ -385,6 +222,9 @@ namespace bml {
     }
   }
 
+  /**
+   * Writes the given array of objects to the given BitWriter by writing all elements.
+   */
   template <typename Type, std::size_t N>
   void write(BitWriter &writer, const std::array<Type, N> &value)
     requires requires(const Type &obj, BitWriter writer) { bml::write(writer, obj); }
@@ -394,6 +234,9 @@ namespace bml {
     }
   }
 
+  /**
+   * Writes the given tuple to the given BitWriter by writing all elements.
+   */
   template <typename... Types>
   void write(BitWriter &writer, const std::tuple<Types...> &value)
     requires(requires(const Types &obj, BitWriter writer) { bml::write(writer, obj); } && ...)
@@ -401,6 +244,9 @@ namespace bml {
     std::apply([&writer](auto &...args) { (bml::write(writer, args), ...); }, value);
   }
 
+  /**
+   * Writes the given variant to the given BitWriter by writing the active element.
+   */
   template <typename... Types>
   void write(BitWriter &writer, const std::variant<Types...> &value)
     requires(requires(const Types &obj, BitWriter writer) { bml::write(writer, obj); } && ...)
@@ -408,6 +254,9 @@ namespace bml {
     return std::visit([&writer](const auto &entry) { return bml::write(writer, entry); }, value);
   }
 
+  /**
+   * Writes the given optional object to the given BitWriter if present.
+   */
   template <typename Type>
   void write(BitWriter &writer, const std::optional<Type> &value)
     requires requires(const Type &obj, BitWriter writer) { bml::write(writer, obj); }
@@ -421,6 +270,9 @@ namespace bml {
   // SIZE
   ////
 
+  /**
+   * Returns the minimum binary data size of the specified type.
+   */
   template <typename Type>
   constexpr BitCount minNumBits() noexcept
     requires requires(const Type &obj) {
@@ -430,6 +282,9 @@ namespace bml {
     return detail::SizeHelper<Type>::calcMinNumBits();
   }
 
+  /**
+   * Returns the maximum binary data size of the specified type.
+   */
   template <typename Type>
   constexpr BitCount maxNumBits() noexcept
     requires requires(const Type &obj) {
@@ -439,6 +294,9 @@ namespace bml {
     return detail::SizeHelper<Type>::calcMaxNumBits();
   }
 
+  /**
+   * Returns the effective binary data size of the given object using its member numBits() function.
+   */
   template <typename Type>
   constexpr BitCount numBits(const Type &obj) noexcept
     requires(detail::HasSizeMembers<Type>)
@@ -446,6 +304,9 @@ namespace bml {
     return obj.numBits();
   }
 
+  /**
+   * Returns the effective binary data size of the given fixed-size object.
+   */
   template <typename Type>
   constexpr BitCount numBits(const Type & /*obj */) noexcept
     requires(!detail::HasSizeMembers<Type> && detail::SizeHelper<Type>::isFixedSize())
@@ -453,6 +314,9 @@ namespace bml {
     return bml::minNumBits<Type>();
   }
 
+  /**
+   * Returns the effective binary data size of the given object by accumulating its member binary data sizes.
+   */
   template <typename Type>
   constexpr BitCount numBits(const Type &object) noexcept
     requires(!detail::HasSizeMembers<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
@@ -461,6 +325,9 @@ namespace bml {
     return detail::numBitsMembers(object);
   }
 
+  /**
+   * Returns the effective binary data size of the given pointed-to object if present.
+   */
   template <typename Type>
   constexpr BitCount numBits(const std::unique_ptr<Type> &object) noexcept
     requires requires(const Type &obj) {
@@ -470,6 +337,9 @@ namespace bml {
     return object ? bml::numBits(*object) : 0_bits;
   }
 
+  /**
+   * Returns the effective binary data size of the given vector by accumulating its element binary data sizes.
+   */
   template <typename Type>
   constexpr BitCount numBits(const std::vector<Type> &object) noexcept
     requires requires(const Type &obj) {
@@ -480,6 +350,9 @@ namespace bml {
                            [](BitCount sum, const Type &elem) { return sum + bml::numBits(elem); });
   }
 
+  /**
+   * Returns the effective binary data size of the given array by accumulating its element binary data sizes.
+   */
   template <typename Type, std::size_t N>
   constexpr BitCount numBits(const std::array<Type, N> &object) noexcept
     requires requires(const Type &obj) {
@@ -490,6 +363,9 @@ namespace bml {
                            [](BitCount sum, const Type &elem) { return sum + bml::numBits(elem); });
   }
 
+  /**
+   * Returns the effective binary data size of the given tuple by accumulating its element binary data sizes.
+   */
   template <typename... Types>
   constexpr BitCount numBits(const std::tuple<Types...> &object) noexcept
     requires(requires(const Types &obj) {
@@ -499,6 +375,10 @@ namespace bml {
     return std::apply([](const auto &...elem) { return (bml::numBits(elem) + ...); }, object);
   }
 
+  /**
+   * Returns the effective binary data size of the given variant by calculating the binary data size of the active
+   * element.
+   */
   template <typename... Types>
   constexpr BitCount numBits(const std::variant<Types...> &object) noexcept
     requires(requires(const Types &obj) {
@@ -508,6 +388,9 @@ namespace bml {
     return std::visit([](const auto &entry) { return bml::numBits(entry); }, object);
   }
 
+  /**
+   * Returns the effective binary data size of the given optional value if present.
+   */
   template <typename Type>
   constexpr BitCount numBits(const std::optional<Type> &object) noexcept
     requires requires(const Type &obj) {
@@ -521,6 +404,10 @@ namespace bml {
   // COPY
   ////
 
+  /**
+   * Copies the binary data representing the specified type from the given BitReader to the given BitWriter by using its
+   * member copy() function.
+   */
   template <typename Type>
   void copy(BitReader &reader, BitWriter &writer)
     requires(detail::HasCopyMember<Type>)
@@ -528,8 +415,15 @@ namespace bml {
     Type::copy(reader, writer);
   }
 
+  /**
+   * Copies the given number of raw bits from the given BitReader to the given BitWriter.
+   */
   void copyBits(BitReader &reader, BitWriter &writer, BitCount numBits);
 
+  /**
+   * Copies the binary data representing the specified type from the given BitReader to the given BitWriter by copying
+   * its fixed number of bits.
+   */
   template <typename Type>
   void copy(BitReader &reader, BitWriter &writer)
     requires(!detail::HasCopyMember<Type> && detail::SizeHelper<Type>::isFixedSize())
@@ -537,6 +431,10 @@ namespace bml {
     copyBits(reader, writer, minNumBits<Type>());
   }
 
+  /**
+   * Copies the binary data representing the specified type from the given BitReader to the given BitWriter by using its
+   * member read() and write() functions on a temporary instance.
+   */
   template <typename Type>
   void copy(BitReader &reader, BitWriter &writer)
     requires(!detail::HasCopyMember<Type> && !detail::SizeHelper<Type>::isFixedSize() && detail::HasReadMember<Type> &&
@@ -548,6 +446,10 @@ namespace bml {
     tmp.write(writer);
   }
 
+  /**
+   * Copies the binary data representing the specified type from the given BitReader to the given BitWriter by copying
+   * each member object.
+   */
   template <typename Type>
   void copy(BitReader &reader, BitWriter &writer)
     requires(!detail::HasCopyMember<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
@@ -556,6 +458,10 @@ namespace bml {
     detail::copyMembers<decltype(detail::destructureReference(std::declval<Type>()))>(reader, writer);
   }
 
+  /**
+   * Copies the binary data representing the specified tuple type from the given BitReader to the given BitWriter by
+   * copying each element.
+   */
   template <typename Type>
   void copy(BitReader &reader, BitWriter &writer)
     requires(detail::IsTuple<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
@@ -564,6 +470,10 @@ namespace bml {
     detail::TupleHelper<Type>::copy(reader, writer);
   }
 
+  /**
+   * Copies the binary data representing the specified array type from the given BitReader to the given BitWriter by
+   * copying all elements.
+   */
   template <typename Type>
   void copy(BitReader &reader, BitWriter &writer)
     requires(detail::IsArray<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
@@ -580,6 +490,10 @@ namespace bml {
   // SKIP
   ////
 
+  /**
+   * Skips the binary data representing the specified type for reading from the given BitReader using its member skip()
+   * function.
+   */
   template <typename Type>
   void skip(BitReader &reader)
     requires(detail::HasSkipMember<Type>)
@@ -587,6 +501,10 @@ namespace bml {
     Type::skip(reader);
   }
 
+  /**
+   * Skips the binary data representing the specified fixed-size type for reading from the given BitReader by skipping
+   * the fixed number of bytes.
+   */
   template <typename Type>
   void skip(BitReader &reader)
     requires(!detail::HasSkipMember<Type> && detail::SizeHelper<Type>::isFixedSize())
@@ -594,6 +512,10 @@ namespace bml {
     reader.skip(minNumBits<Type>());
   }
 
+  /**
+   * Skips the binary data representing the specified type for reading from the given BitReader using its member read()
+   * function on a temporary instance.
+   */
   template <typename Type>
   void skip(BitReader &reader)
     requires(!detail::HasSkipMember<Type> && !detail::SizeHelper<Type>::isFixedSize() && detail::HasReadMember<Type>)
@@ -603,6 +525,10 @@ namespace bml {
     tmp.read(reader);
   }
 
+  /**
+   * Skips the binary data representing the specified type for reading from the given BitReader by skipping the binary
+   * data representations of all member objects.
+   */
   template <typename Type>
   void skip(BitReader &reader)
     requires(!detail::HasSkipMember<Type> && !detail::SizeHelper<Type>::isFixedSize() && !detail::HasReadMember<Type> &&
@@ -611,6 +537,10 @@ namespace bml {
     detail::skipMembers<decltype(detail::destructure(std::declval<Type>()))>(reader);
   }
 
+  /**
+   * Skips the binary data representing the specified tuple type for reading from the given BitReader by skipping the
+   * binary data representations of all elements.
+   */
   template <typename Type>
   void skip(BitReader &reader)
     requires(detail::IsTuple<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
@@ -619,6 +549,10 @@ namespace bml {
     detail::TupleHelper<Type>::skip(reader);
   }
 
+  /**
+   * Skips the binary data representing the specified array type for reading from the given BitReader by skipping the
+   * binary data representations of all elements.
+   */
   template <typename Type>
   void skip(BitReader &reader)
     requires(detail::IsArray<Type> && !detail::SizeHelper<Type>::isFixedSize() &&

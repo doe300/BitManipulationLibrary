@@ -12,9 +12,29 @@
 
 namespace bml {
 
+  /**
+   * Main reader class wrapping a source of bytes (e.g. a buffer or stream) and providing functions to extract bit-,
+   * byte-sized and encoded numerical values.
+   *
+   * NOTE: All values are read in big endian, MSB first! This also means that bits are read from the highest bit first!
+   *
+   * NOTE: Any read function will throw an error if not enough bytes are available in the underlying byte source.
+   */
   class BitReader {
   public:
+    /**
+     * A byte source providing a single byte at a time in its output parameter.
+     *
+     * Returns whether a next valid byte was returned (true) or no more binary data is available (false).
+     */
     using ByteGenerator = std::function<bool(std::byte &)>;
+
+    /**
+     * A byte source wrapping a read-only contiguous range of bytes in memory.
+     *
+     * NOTE: The underlying memory range must be kept alive until the BitReader is done reading, the memory is not
+     * copied!
+     */
     struct ByteRange {
       const std::byte *begin;
       const std::byte *end;
@@ -40,17 +60,40 @@ namespace bml {
     /**
      * Returns the number of bits already read.
      *
-     * if the start of the bit source is properly aligned, this can also be used to determine the current alignment.
+     * If the start of the bit source is properly aligned, this can also be used to determine the current alignment.
      */
     BitCount position() const noexcept { return bytesRead - cacheSize; }
+
+    /*
+     * Returns whether there is at least one more byte to read in the underlying byte source.
+     */
     bool hasMoreBytes() noexcept;
 
+    /**
+     * Reads and drops all bits until the given bit alignment is achieved.
+     *
+     * Returns the number of bits skipped.
+     */
     BitCount skipToAligment(BitCount bitAlignment);
+
+    /**
+     * Throws an exception if the current read position is not aligned to the given bit alignment.
+     */
     void assertAlignment(BitCount bitAlignment);
 
+    /**
+     * Reads a single bit.
+     */
     bool read();
 
+    /**
+     * Peeks the given amount of bits without increasing the current read position.
+     */
     std::uintmax_t peek(BitCount numBits);
+
+    /**
+     * Reads the given amount of bits, increasing the current read position.
+     */
     std::uintmax_t read(BitCount numBits);
 
     template <typename T>
@@ -60,7 +103,18 @@ namespace bml {
       return static_cast<T>(read(numBits));
     }
 
+    /**
+     * Reads the given amount of aligned bytes.
+     *
+     * Throws an exception if the read position is not byte aligned, see assertAlignment().
+     */
     std::uintmax_t readBytes(ByteCount numBytes);
+
+    /**
+     * Reads a single aligned byte.
+     *
+     * Throws an exception if the read position is not byte aligned, see assertAlignment().
+     */
     std::byte readByte() { return static_cast<std::byte>(readBytes(1_bytes)); }
 
     template <typename T>
@@ -70,8 +124,16 @@ namespace bml {
       return static_cast<T>(readBytes(numBytes));
     }
 
+    /**
+     * Reads as many bytes required to fill the given output range completely.
+     *
+     * Throws an exception if the read position is not byte aligned, see assertAlignment().
+     */
     void readBytesInto(std::span<std::byte> outBytes);
 
+    /**
+     * Reads an unsigned Exponential-Golomb encoded value and returns the underlying decoded value.
+     */
     std::uintmax_t readExpGolomb();
 
     template <typename T>
@@ -81,6 +143,9 @@ namespace bml {
       return static_cast<T>(readExpGolomb());
     }
 
+    /**
+     * Reads an signed Exponential-Golomb encoded value and returns the underlying decoded value.
+     */
     std::intmax_t readSignedExpGolomb();
 
     template <typename T>
@@ -90,12 +155,17 @@ namespace bml {
       return static_cast<T>(readSignedExpGolomb());
     }
 
+    /**
+     * Skips the given number of bits for reading, incrementing the current read position by the given number of bits.
+     */
     void skip(BitCount numBits);
 
   private:
     void makeAvailable(BitCount numBits, bool throwOnEos = true);
 
-    /** read until the the uppermost bit in the cache is set return the number of leading zero bits */
+    /**
+     * Reads until the the uppermost bit in the cache is set return the number of leading zero bits.
+     */
     BitCount readLeadingZeroes();
 
   private:
