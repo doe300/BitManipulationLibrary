@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.config.os }} ${{ matrix.build_type }}
+    name: ${{ matrix.os }} ${{ matrix.c_compiler }} ${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

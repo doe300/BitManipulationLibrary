@@ -858,8 +858,8 @@ namespace bml {
   private:
     void checkValue(bool value) {
       if (!IgnoreInvalidValue && value != Value)
-        throw std::invalid_argument("Value '" + toHexString(value) + "' does not match the alignment padding value '" +
-                                    toHexString(Value) + "'");
+        Debug::error("Value '" + toHexString(value) + "' does not match the alignment padding value '" +
+                     toHexString(Value) + "'");
     }
   };
 } // namespace bml
