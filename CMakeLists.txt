@@ -12,7 +12,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 include(cmake/sanitizers.cmake)
 
 if (MSVC)
-  add_compile_options(/Zc:__cplusplus)
+  add_compile_options(/Zc:__cplusplus $<$<CONFIG:DEBUG>:/bigobj>)
 endif()
 
 add_subdirectory(src)
