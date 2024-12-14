@@ -125,6 +125,20 @@ namespace bml {
     void writeSignedExpGolomb(std::intmax_t value);
 
     /**
+     * Writes as many bytes required to UTF-8 encode the given Unicode code point.
+     *
+     * Throws an exception if the write position is not byte aligned, see assertAlignment().
+     */
+    void writeUtf8CodePoint(char32_t codePoint);
+
+    /**
+     * Writes as many bytes required to UTF-16 encode the given Unicode code point.
+     *
+     * Throws an exception if the write position is not byte aligned, see assertAlignment().
+     */
+    void writeUtf16CodePoint(char32_t codePoint);
+
+    /**
      * Encodes the given value with the Fibonacco coding and writes it to the byte sink.
      */
     void writeFibonacci(uint32_t value);

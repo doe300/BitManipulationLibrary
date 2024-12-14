@@ -63,6 +63,22 @@ namespace bml {
     write(encodedValue, numBits);
   }
 
+  void BitWriter::writeUtf8CodePoint(char32_t codePoint) {
+    auto utf8String = toUtf8String(codePoint);
+    writeBytes(std::as_bytes(std::span{utf8String}));
+  }
+
+  void BitWriter::writeUtf16CodePoint(char32_t codePoint) {
+    auto value = static_cast<uint32_t>(codePoint);
+    if (value < 0x10000) {
+      write(value, 2_bytes);
+    } else {
+      value -= 0x10000;
+      write(0xD800 + ((value >> 10) & 0x3FF), 2_bytes);
+      write(0xDC00 + (value & 0x3FF), 2_bytes);
+    }
+  }
+
   void BitWriter::writeFibonacci(uint32_t value) {
     auto [encodedValue, numBits] = encodeFibonacci(value);
     write(invertBits(encodedValue, numBits), numBits);

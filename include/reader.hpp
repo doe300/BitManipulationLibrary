@@ -164,6 +164,20 @@ namespace bml {
     }
 
     /**
+     * Reads as many bytes required to produce a full UTF-8 encoded Unicode code point.
+     *
+     * Throws an exception if the read position is not byte aligned, see assertAlignment().
+     */
+    char32_t readUtf8CodePoint();
+
+    /**
+     * Reads as many bytes required to produce a full UTF-16 encoded Unicode code point.
+     *
+     * Throws an exception if the read position is not byte aligned, see assertAlignment().
+     */
+    char32_t readUtf16CodePoint();
+
+    /**
      * Reads an unsigned Fibonacci encoded value and returns the underlying decoded value.
      */
     uint32_t readFibonacci();

@@ -1004,6 +1004,9 @@ public:
     TEST_ADD(TestTypes::testChar);
     TEST_ADD(TestTypes::testExpGolombBits);
     TEST_ADD(TestTypes::testSignedExpGolombBits);
+    TEST_ADD(TestTypes::testUtf8CodePoint);
+    TEST_ADD(TestTypes::testUtf16CodePoint);
+    TEST_ADD(TestTypes::testUtf32CodePoint);
     TEST_ADD(TestTypes::testFibonacciBits);
     TEST_ADD(TestTypes::testNegaFibonacciBits);
     TEST_ADD(TestTypes::testOptionalBits);
@@ -1084,6 +1087,42 @@ public:
         intmax_t{-0x3FFFFFFFFFFFFFFF},
         toBytes({0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF8}),
         "-4611686018427387903", 125_bits, false);
+  }
+
+  void testUtf8CodePoint() {
+    checkValueBitfield<Utf8CodePoint>(U'\0', toBytes({0x00}), "\\0", 1_bytes, false);
+    checkValueBitfield<Utf8CodePoint>(U'A', toBytes({0x41}), "A", 1_bytes, false);
+    checkValueBitfield<Utf8CodePoint>(U'£', toBytes({0xC2, 0xA3}), "£", 2_bytes, false);
+    checkValueBitfield<Utf8CodePoint>(U'÷', toBytes({0xC3, 0xB7}), "÷", 2_bytes, false);
+    checkValueBitfield<Utf8CodePoint>(U'ᴀ', toBytes({0xE1, 0xB4, 0x80}), "ᴀ", 3_bytes, false); // small capital A
+    checkValueBitfield<Utf8CodePoint>(U'₤', toBytes({0xE2, 0x82, 0xA4}), "₤", 3_bytes, false); // Lira
+    checkValueBitfield<Utf8CodePoint>(U'𐞃', toBytes({0xF0, 0x90, 0x9E, 0x83}), "𐞃", 4_bytes, false);
+    checkValueBitfield<Utf8CodePoint>(U'🚆', toBytes({0xF0, 0x9F, 0x9A, 0x86}), "🚆", 4_bytes, false); // train
+    checkValueBitfield<Utf8CodePoint>(U'🤍', toBytes({0xF0, 0x9F, 0xA4, 0x8D}), "🤍", 4_bytes, false); // white heart
+  }
+
+  void testUtf16CodePoint() {
+    checkValueBitfield<Utf16CodePoint>(U'\0', toBytes({0x00, 0x00}), "\\0", 2_bytes, false);
+    checkValueBitfield<Utf16CodePoint>(U'A', toBytes({0x00, 0x41}), "A", 2_bytes, false);
+    checkValueBitfield<Utf16CodePoint>(U'£', toBytes({0x00, 0xA3}), "£", 2_bytes, false);
+    checkValueBitfield<Utf16CodePoint>(U'÷', toBytes({0x00, 0xF7}), "÷", 2_bytes, false);
+    checkValueBitfield<Utf16CodePoint>(U'ᴀ', toBytes({0x1D, 0x00}), "ᴀ", 2_bytes, false); // small capital A
+    checkValueBitfield<Utf16CodePoint>(U'₤', toBytes({0x20, 0xA4}), "₤", 2_bytes, false); // Lira
+    checkValueBitfield<Utf16CodePoint>(U'𐞃', toBytes({0xD8, 0x01, 0xDF, 0x83}), "𐞃", 4_bytes, false);
+    checkValueBitfield<Utf16CodePoint>(U'🚆', toBytes({0xD8, 0x3D, 0xDE, 0x86}), "🚆", 4_bytes, false); // train
+    checkValueBitfield<Utf16CodePoint>(U'🤍', toBytes({0xD8, 0x3E, 0xDD, 0x0D}), "🤍", 4_bytes, false); // white heart
+  }
+
+  void testUtf32CodePoint() {
+    checkValueBitfield<Utf32CodePoint>(U'\0', toBytes({0x00, 0x00, 0x00, 0x00}), "\\0", 4_bytes, true);
+    checkValueBitfield<Utf32CodePoint>(U'A', toBytes({0x00, 0x00, 0x00, 0x41}), "A", 4_bytes, true);
+    checkValueBitfield<Utf32CodePoint>(U'£', toBytes({0x00, 0x00, 0x00, 0xA3}), "£", 4_bytes, true);
+    checkValueBitfield<Utf32CodePoint>(U'÷', toBytes({0x00, 0x00, 0x00, 0xF7}), "÷", 4_bytes, true);
+    checkValueBitfield<Utf32CodePoint>(U'ᴀ', toBytes({0x00, 0x00, 0x1D, 0x00}), "ᴀ", 4_bytes, true); // small capital A
+    checkValueBitfield<Utf32CodePoint>(U'₤', toBytes({0x00, 0x00, 0x20, 0xA4}), "₤", 4_bytes, true); // Lira
+    checkValueBitfield<Utf32CodePoint>(U'𐞃', toBytes({0x00, 0x01, 0x07, 0x83}), "𐞃", 4_bytes, true);
+    checkValueBitfield<Utf32CodePoint>(U'🚆', toBytes({0x00, 0x01, 0xF6, 0x86}), "🚆", 4_bytes, true); // train
+    checkValueBitfield<Utf32CodePoint>(U'🤍', toBytes({0x00, 0x01, 0xF9, 0x0D}), "🤍", 4_bytes, true); // white heart
   }
 
   void testFibonacciBits() {

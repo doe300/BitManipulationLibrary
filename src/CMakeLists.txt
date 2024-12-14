@@ -6,6 +6,7 @@ target_sources(bml PRIVATE
   io.cpp
   print.cpp
   reader.cpp
+  types.cpp
   writer.cpp
 )
 target_precompile_headers(bml PUBLIC ../include/bml.hpp)

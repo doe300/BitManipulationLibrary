@@ -84,6 +84,48 @@ namespace bml {
     return decodeSignedExpGolomb(read(exponent + 1_bits /* marker 1-bit */));
   }
 
+  char32_t BitReader::readUtf8CodePoint() {
+    auto b = peek(1_bytes);
+    if ((b & 0x80) == 0x00) {
+      // simple 7-bit ASCII
+      return read<uint32_t>(1_bytes);
+    } else if ((b & 0xE0) == 0xC0) {
+      uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x1F) << 6U;
+      return codePoint | (read<uint32_t>(1_bytes) & 0x3F);
+    } else if ((b & 0xF0) == 0xE0) {
+      uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x0F) << 12;
+      codePoint |= (read<uint32_t>(1_bytes) & 0x3F) << 6;
+      return codePoint | (read<uint32_t>(1_bytes) & 0x3F);
+    } else if ((b & 0xF8) == 0xF0) {
+      uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x07) << 18;
+      codePoint |= (read<uint32_t>(1_bytes) & 0x3F) << 12;
+      codePoint |= (read<uint32_t>(1_bytes) & 0x3F) << 6;
+      return codePoint | (read<uint32_t>(1_bytes) & 0x3F);
+    } else if ((b & 0xC0) == 0x80) {
+      // start within the previous UTF-8 character, cannot decode, so skip remainder
+      while ((peek(1_bytes) & 0xC0) == 0x80) {
+        readByte();
+      }
+    }
+    return 0;
+  }
+
+  char32_t BitReader::readUtf16CodePoint() {
+    auto b = peek(2_bytes);
+    if (b < 0xD800 || b >= 0xE000) {
+      return read<uint32_t>(2_bytes);
+    } else if ((b & 0xDC00) == 0xD800) {
+      uint32_t codePoint = (read<uint32_t>(2_bytes) & 0x3FF) << 10;
+      return 0x10000U | codePoint | (read<uint32_t>(2_bytes) & 0x3FF);
+    } else if ((b & 0xDC00) == 0xDC00) {
+      // start within the previous UTF-16 character, cannot decode, so skip remainder
+      while ((peek(2_bytes) & 0xDC00) == 0xDC00) {
+        read(2_bytes);
+      }
+    }
+    return 0;
+  }
+
   uint32_t BitReader::readFibonacci() {
     auto [value, numBits] = readUntilTwoOnes();
     return decodeFibonacci(invertBits(value, numBits));

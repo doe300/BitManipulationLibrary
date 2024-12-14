@@ -5,6 +5,7 @@
 #include <compare>
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 
 namespace bml {
 
@@ -108,6 +109,26 @@ namespace bml {
     writeToCache(cache, value, numBits);
     return flushFullCacheBytes(cache, std::forward<ByteConsumer>(consumeNextByte),
                                std::forward<ErrorHandler>(handleEos));
+  }
+
+  constexpr std::u8string toUtf8String(char32_t codePoint) noexcept {
+    std::u8string outUtf8String{};
+    if (codePoint < 0x80) {
+      outUtf8String.push_back(static_cast<char8_t>(codePoint & 0x7F));
+    } else if (codePoint < 0x800) {
+      outUtf8String.push_back(static_cast<char8_t>(0xC0 + ((codePoint >> 6) & 0x1F)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80 + (codePoint & 0x3F)));
+    } else if (codePoint < 0x10000) {
+      outUtf8String.push_back(static_cast<char8_t>(0xE0 + ((codePoint >> 12) & 0x0F)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80 + ((codePoint >> 6) & 0x3F)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80 + (codePoint & 0x3F)));
+    } else if (codePoint < 0x110000) {
+      outUtf8String.push_back(static_cast<char8_t>(0xF0 + ((codePoint >> 18) & 0x07)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80 + ((codePoint >> 12) & 0x3F)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80 + ((codePoint >> 6) & 0x3F)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80 + (codePoint & 0x3F)));
+    }
+    return outUtf8String;
   }
 
 } // namespace bml

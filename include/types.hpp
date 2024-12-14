@@ -317,6 +317,88 @@ namespace bml {
   };
 
   /**
+   * Mapping base type for an Unicode code point.
+   */
+  class UnicodeCodePoint {
+  public:
+    using value_type = char32_t;
+
+    constexpr auto operator<=>(const UnicodeCodePoint &) const noexcept = default;
+
+    constexpr value_type get() const noexcept { return value; }
+    constexpr operator value_type() const noexcept { return value; }
+    void set(value_type val) { value = val; }
+
+    friend std::ostream &operator<<(std::ostream &os, const UnicodeCodePoint &codePoint);
+
+  protected:
+    value_type value;
+  };
+
+  /**
+   * Mapping type for a dynamically sized UTF-8 encoded Unicode code point.
+   */
+  class Utf8CodePoint : public UnicodeCodePoint {
+  public:
+    static constexpr BitCount minNumBits() { return 1_bytes; };
+    static constexpr BitCount maxNumBits() { return 4_bytes; };
+
+    constexpr BitCount numBits() const noexcept {
+      auto codePoint = static_cast<uint32_t>(value);
+      return codePoint < 0x0080U ? 1_bytes
+                                 : (codePoint < 0x0800U ? 2_bytes : (codePoint < 0x010000U ? 3_bytes : 4_bytes));
+    }
+
+    Utf8CodePoint &operator=(value_type val) {
+      value = val;
+      return *this;
+    }
+
+    void read(BitReader &reader) { value = reader.readUtf8CodePoint(); }
+    void write(BitWriter &writer) const { writer.writeUtf8CodePoint(value); }
+  };
+
+  /**
+   * Mapping type for a dynamically sized UTF-16 encoded Unicode code point.
+   */
+  class Utf16CodePoint : public UnicodeCodePoint {
+  public:
+    static constexpr BitCount minNumBits() { return 2_bytes; };
+    static constexpr BitCount maxNumBits() { return 4_bytes; };
+
+    constexpr BitCount numBits() const noexcept {
+      auto codePoint = static_cast<uint32_t>(value);
+      return (codePoint < 0xD800U) || (codePoint >= 0xE000U && codePoint < 0x10000U) ? 2_bytes : 4_bytes;
+    }
+
+    Utf16CodePoint &operator=(value_type val) {
+      value = val;
+      return *this;
+    }
+
+    void read(BitReader &reader) { value = reader.readUtf16CodePoint(); }
+    void write(BitWriter &writer) const { writer.writeUtf16CodePoint(value); }
+  };
+
+  /**
+   * Mapping type for a fixed sized UTF-32 encoded Unicode code point.
+   */
+  class Utf32CodePoint : public UnicodeCodePoint {
+  public:
+    static constexpr BitCount minNumBits() { return 4_bytes; };
+    static constexpr BitCount maxNumBits() { return 4_bytes; };
+    constexpr BitCount numBits() const noexcept { return 4_bytes; }
+
+    Utf32CodePoint &operator=(value_type val) {
+      value = val;
+      return *this;
+    }
+
+    void read(BitReader &reader) { value = static_cast<char32_t>(reader.read(4_bytes)); }
+    void write(BitWriter &writer) const { writer.write(value, 4_bytes); }
+  };
+
+  /**
    * Mapping type for a dynamically sized Fibonacci encoded unsigned integral value.
    *
    * The integral template type parameter only used for object-side storage and representation of the value and has no
