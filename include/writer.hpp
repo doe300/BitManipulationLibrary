@@ -54,6 +54,14 @@ namespace bml {
                          reinterpret_cast<std::byte *>(range.data() + range.size())}) {}
     BitWriter(std::span<std::byte> range) noexcept : sink(ByteRange{range.data(), range.data() + range.size()}) {}
 
+    // Disallow copying, since the different byte sinks might behave differently when being copied
+    BitWriter(const BitWriter &) = delete;
+    BitWriter(BitWriter &&) noexcept = default;
+    ~BitWriter() noexcept = default;
+
+    BitWriter &operator=(const BitWriter &) = delete;
+    BitWriter &operator=(BitWriter &&) noexcept = default;
+
     /**
      * Returns the number of bits already written.
      *
@@ -115,6 +123,16 @@ namespace bml {
      * Encodes the given value with the signed Exponential-Golomb coding and writes it to the byte sink.
      */
     void writeSignedExpGolomb(std::intmax_t value);
+
+    /**
+     * Encodes the given value with the Fibonacco coding and writes it to the byte sink.
+     */
+    void writeFibonacci(uint32_t value);
+
+    /**
+     * Encodes the given value with the Negafibonacco coding and writes it to the byte sink.
+     */
+    void writeSignedFibonacci(int32_t value);
 
   private:
     void flushFullBytes();

@@ -63,6 +63,16 @@ namespace bml {
     write(encodedValue, numBits);
   }
 
+  void BitWriter::writeFibonacci(uint32_t value) {
+    auto [encodedValue, numBits] = encodeFibonacci(value);
+    write(invertBits(encodedValue, numBits), numBits);
+  }
+
+  void BitWriter::writeSignedFibonacci(int32_t value) {
+    auto [encodedValue, numBits] = encodeNegaFibonacci(value);
+    write(invertBits(encodedValue, numBits), numBits);
+  }
+
   void BitWriter::flushFullBytes() {
     Cache tmp{cache, cacheSize};
     bytesWritten += flushFullCacheBytes(

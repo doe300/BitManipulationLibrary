@@ -255,7 +255,7 @@ namespace bml {
     static constexpr BitCount minNumBits() { return 1_bits; };
     static constexpr BitCount maxNumBits() { return 2_bits * bits<T>() + 1_bits; };
 
-    constexpr BitCount numBits() const noexcept { return encodeExpGolomb(value).second; }
+    constexpr BitCount numBits() const noexcept { return encodeExpGolomb(value).numBits; }
     constexpr auto operator<=>(const ExpGolombBits &) const noexcept = default;
 
     constexpr value_type get() const noexcept { return value; }
@@ -294,7 +294,7 @@ namespace bml {
     static constexpr BitCount minNumBits() { return 1_bits; };
     static constexpr BitCount maxNumBits() { return 2_bits * bits<T>() + 1_bits; };
 
-    constexpr BitCount numBits() const noexcept { return encodeSignedExpGolomb(value).second; }
+    constexpr BitCount numBits() const noexcept { return encodeSignedExpGolomb(value).numBits; }
     constexpr auto operator<=>(const SignedExpGolombBits &) const noexcept = default;
 
     constexpr value_type get() const noexcept { return value; }
@@ -311,6 +311,94 @@ namespace bml {
     void write(BitWriter &writer) const { writer.writeSignedExpGolomb(value); }
 
     friend std::ostream &operator<<(std::ostream &os, const SignedExpGolombBits &bits) { return os << bits.value; }
+
+  private:
+    value_type value;
+  };
+
+  /**
+   * Mapping type for a dynamically sized Fibonacci encoded unsigned integral value.
+   *
+   * The integral template type parameter only used for object-side storage and representation of the value and has no
+   * effect on the binary storage.
+   *
+   * NOTE: Fibonacci-coding cannot represent the value zero!
+   *
+   * See https://en.wikipedia.org/wiki/Fibonacci_coding
+   */
+  template <typename T = uint32_t>
+  class FibonacciBits {
+    static_assert(std::is_unsigned_v<T>);
+
+  public:
+    using value_type = T;
+    static constexpr BitCount minNumBits() { return 2_bits; };
+    static constexpr BitCount maxNumBits() {
+      // F(47) is the highest Fibonacci number fitting into 32-bit + trailing 1-bit
+      return 48_bits;
+    };
+
+    constexpr BitCount numBits() const noexcept { return encodeFibonacci(value).numBits; }
+    constexpr auto operator<=>(const FibonacciBits &) const noexcept = default;
+
+    constexpr value_type get() const noexcept { return value; }
+    constexpr operator value_type() const noexcept { return value; }
+
+    void set(value_type val) { value = val; }
+
+    FibonacciBits &operator=(value_type val) {
+      value = val;
+      return *this;
+    }
+
+    void read(BitReader &reader) { value = reader.readFibonacci<value_type>(); }
+    void write(BitWriter &writer) const { writer.writeFibonacci(value); }
+
+    friend std::ostream &operator<<(std::ostream &os, const FibonacciBits &bits) { return os << bits.value; }
+
+  private:
+    value_type value;
+  };
+
+  /**
+   * Mapping type for a dynamically sized Negafibonacci encoded signed integral value.
+   *
+   * The integral template type parameter only used for object-side storage and representation of the value and has no
+   * effect on the binary storage.
+   *
+   * NOTE: Negafibonacci-coding cannot represent the value zero!
+   *
+   * See https://en.wikipedia.org/wiki/Negafibonacci_coding
+   */
+  template <typename T = int32_t>
+  class NegaFibonacciBits {
+    static_assert(std::is_signed_v<T>);
+
+  public:
+    using value_type = T;
+    static constexpr BitCount minNumBits() { return 2_bits; };
+    static constexpr BitCount maxNumBits() {
+      // F(47) is the highest Fibonacci number fitting into 32-bit + trailing 1-bit
+      return 48_bits;
+    };
+
+    constexpr BitCount numBits() const noexcept { return encodeNegaFibonacci(value).numBits; }
+    constexpr auto operator<=>(const NegaFibonacciBits &) const noexcept = default;
+
+    constexpr value_type get() const noexcept { return value; }
+    constexpr operator value_type() const noexcept { return value; }
+
+    void set(value_type val) { value = val; }
+
+    NegaFibonacciBits &operator=(value_type val) {
+      value = val;
+      return *this;
+    }
+
+    void read(BitReader &reader) { value = reader.readSignedFibonacci<value_type>(); }
+    void write(BitWriter &writer) const { writer.writeSignedFibonacci(value); }
+
+    friend std::ostream &operator<<(std::ostream &os, const NegaFibonacciBits &bits) { return os << bits.value; }
 
   private:
     value_type value;

@@ -57,6 +57,14 @@ namespace bml {
     BitReader(std::span<const std::byte> range) noexcept
         : source(ByteRange{range.data(), range.data() + range.size()}) {}
 
+    // Disallow copying, since the different byte sources might behave differently when being copied
+    BitReader(const BitReader &) = delete;
+    BitReader(BitReader &&) noexcept = default;
+    ~BitReader() noexcept = default;
+
+    BitReader &operator=(const BitReader &) = delete;
+    BitReader &operator=(BitReader &&) noexcept = default;
+
     /**
      * Returns the number of bits already read.
      *
@@ -156,6 +164,30 @@ namespace bml {
     }
 
     /**
+     * Reads an unsigned Fibonacci encoded value and returns the underlying decoded value.
+     */
+    uint32_t readFibonacci();
+
+    template <typename T>
+    T readFibonacci()
+      requires(std::is_unsigned_v<T>)
+    {
+      return static_cast<T>(readFibonacci());
+    }
+
+    /**
+     * Reads an signed Negafibonacci encoded value and returns the underlying decoded value.
+     */
+    int32_t readSignedFibonacci();
+
+    template <typename T>
+    T readSignedFibonacci()
+      requires(std::is_signed_v<T>)
+    {
+      return static_cast<T>(readSignedFibonacci());
+    }
+
+    /**
      * Skips the given number of bits for reading, incrementing the current read position by the given number of bits.
      */
     void skip(BitCount numBits);
@@ -164,9 +196,13 @@ namespace bml {
     void makeAvailable(BitCount numBits, bool throwOnEos = true);
 
     /**
-     * Reads until the the uppermost bit in the cache is set return the number of leading zero bits.
+     * Reads until the uppermost bit in the cache is set and return the number of leading zero bits.
      */
     BitCount readLeadingZeroes();
+    /**
+     * Reads until two consecutive one bits are set and return the value with then number of bits read.
+     */
+    EncodedValue<uint64_t> readUntilTwoOnes();
 
   private:
     ByteCount bytesRead{};

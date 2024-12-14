@@ -31,6 +31,18 @@ namespace bml {
   }
 
   /**
+   * Inverts the lower given number of bits within the given value.
+   *
+   * E.g. converts 0b1011 to 0b1101.
+   */
+  std::uintmax_t invertBits(std::uintmax_t value, BitCount numBits);
+
+  template <std::unsigned_integral T>
+  T invertBits(T value, BitCount numBits = BitCount{bits<T>()}) {
+    return static_cast<T>(invertBits(static_cast<std::uintmax_t>(value), numBits));
+  }
+
+  /**
    * Helper type to determine the best unsigned integral type to store the specified number of bits.
    */
   template <std::size_t N>
@@ -39,16 +51,21 @@ namespace bml {
                          std::conditional_t<N <= bits<uint16_t>(), uint16_t,
                                             std::conditional_t<N <= bits<uint32_t>(), uint32_t, uint64_t>>>;
 
+  template <typename T>
+  struct EncodedValue {
+    T value;
+    /** Number of valid lower bits */
+    BitCount numBits;
+  };
+
   /**
-   * Encodes the given unsigned integral value with the Exponential-Golomb coding and returns a pair consisting of:
-   * - the encoded value
-   * - the number of bits required to store the value (leading bits are filled with zeroes)
+   * Encodes the given unsigned integral value with the Exponential-Golomb coding and returns the encoded value.
    */
   template <std::unsigned_integral T>
-  constexpr std::pair<best_type<2 * bits<T>() + 1>, BitCount> encodeExpGolomb(T value) noexcept {
+  constexpr EncodedValue<best_type<2 * bits<T>() + 1>> encodeExpGolomb(T value) noexcept {
     ++value;
     auto numBits = std::bit_width(value) - 1;
-    return std::make_pair(best_type<2 * bits<T>() + 1>{value}, static_cast<BitCount>(numBits * 2 + 1));
+    return {best_type<2 * bits<T>() + 1>{value}, static_cast<BitCount>(numBits * 2 + 1)};
   }
 
   /**
@@ -73,12 +90,10 @@ namespace bml {
   }
 
   /**
-   * Encodes the given signed integral value with the Exponential-Golomb coding and returns a pair consisting of:
-   * - the encoded value
-   * - the number of bits required to store the value (leading bits are filled with zeroes)
+   * Encodes the given signed integral value with the Exponential-Golomb coding and returns the encoded value.
    */
   template <std::signed_integral T>
-  constexpr std::pair<best_type<2 * bits<T>() + 1>, BitCount> encodeSignedExpGolomb(T value) noexcept {
+  constexpr EncodedValue<best_type<2 * bits<T>() + 1>> encodeSignedExpGolomb(T value) noexcept {
     auto tmp = value < 0 ? (-2 * value) : value > 0 ? (2 * value - 1) : 0;
     return encodeExpGolomb(std::bit_cast<std::make_unsigned_t<T>>(tmp));
   }
@@ -93,6 +108,26 @@ namespace bml {
     auto val = static_cast<std::intmax_t>(tmp / 2 + (tmp & 0x1));
     return sign * val;
   }
+
+  /**
+   * Encodes the given unsigned integral value with the Fibonacci coding and returns the encoded value.
+   */
+  EncodedValue<std::uintmax_t> encodeFibonacci(uint32_t value) noexcept;
+
+  /**
+   * Decodes the given Fibonacci encoded value into its underlying unsigned integral value.
+   */
+  uint32_t decodeFibonacci(std::uintmax_t value) noexcept;
+
+  /**
+   * Encodes the given signed integral value with the Negafibonacci coding and returns the encoded value.
+   */
+  EncodedValue<std::uintmax_t> encodeNegaFibonacci(int32_t value);
+
+  /**
+   * Decodes the given Negafibonacci encoded value into its underlying signed integral value.
+   */
+  int32_t decodeNegaFibonacci(std::uintmax_t value);
 
   void writeBits(std::ostream &os, std::uintmax_t value, BitCount numBits);
   void writeBits(std::ostream &os, std::intmax_t value, BitCount numBits);

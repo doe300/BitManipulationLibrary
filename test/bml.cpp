@@ -92,10 +92,15 @@ struct TestHelper : public Test::Suite {
 public:
   TestHelper() : Test::Suite("Helper") {
     TEST_ADD(TestHelper::testBits);
+    TEST_ADD(TestHelper::testInvertBits);
     TEST_ADD(TestHelper::testEncodeExpGolomb);
     TEST_ADD(TestHelper::testDecodeExpGolomb);
     TEST_ADD(TestHelper::testEncodeSignedExpGolomb);
     TEST_ADD(TestHelper::testDecodeSignedExpGolomb);
+    TEST_ADD(TestHelper::testEncodeFibonacci);
+    TEST_ADD(TestHelper::testDecodeFibonacci);
+    TEST_ADD(TestHelper::testEncodeSignedFibonacci);
+    TEST_ADD(TestHelper::testDecodeSignedFibonacci);
     TEST_ADD(TestHelper::testHexString);
     TEST_ADD(TestHelper::testWriteBits);
   }
@@ -106,17 +111,32 @@ public:
     TEST_ASSERT_EQUALS(1U, bits<bool>());
   }
 
+  void testInvertBits() {
+    TEST_ASSERT_EQUALS(0b1011U, invertBits(0b1101, 4_bits));
+    TEST_ASSERT_EQUALS(0b01011U, invertBits(0b11010, 5_bits));
+    TEST_ASSERT_EQUALS(0b101100U, invertBits(0b001101, 6_bits));
+    TEST_ASSERT_EQUALS(0b00101100U, invertBits(0b00110100, 8_bits));
+    TEST_ASSERT_EQUALS(0xABCU, invertBits(0x3D5U, 12_bits));
+    TEST_ASSERT_EQUALS(0x55EU, invertBits(0x3D5U, 11_bits));
+    TEST_ASSERT_EQUALS(0xAABBU, invertBits(0xDD55U, 2_bytes));
+    TEST_ASSERT_EQUALS(0xAAABBBU, invertBits(0xDDD555U, 3_bytes));
+    TEST_ASSERT_EQUALS(0x15780F54U, invertBits(0x55E03D5U, 29_bits));
+    TEST_ASSERT_EQUALS(0xCCCCCCCCU, invertBits(0x33333333U, 4_bytes));
+    TEST_ASSERT_EQUALS(0x33333333U, invertBits(0xCCCCCCCCU, 4_bytes));
+    TEST_ASSERT_EQUALS(0xAAAAAAAABBBBBBBBU, invertBits(0xDDDDDDDD55555555U, 8_bytes));
+  }
+
   void testEncodeExpGolomb() {
-    static_assert(encodeExpGolomb(0U).first == 0b1);
-    static_assert(encodeExpGolomb(0U).second == 1_bits);
-    static_assert(encodeExpGolomb(1U).first == 0b010);
-    static_assert(encodeExpGolomb(1U).second == 3_bits);
-    static_assert(encodeExpGolomb(8U).first == 0b0001001);
-    static_assert(encodeExpGolomb(8U).second.value() == 2 * 3 + 1);
-    static_assert(encodeExpGolomb(17U).first == 0b000010010);
-    static_assert(encodeExpGolomb(17U).second.value() == 2 * 4 + 1);
-    static_assert(encodeExpGolomb(42U).first == 0b00000101011);
-    static_assert(encodeExpGolomb(42U).second.value() == 2 * 5 + 1);
+    static_assert(encodeExpGolomb(0U).value == 0b1);
+    static_assert(encodeExpGolomb(0U).numBits == 1_bits);
+    static_assert(encodeExpGolomb(1U).value == 0b010);
+    static_assert(encodeExpGolomb(1U).numBits == 3_bits);
+    static_assert(encodeExpGolomb(8U).value == 0b0001001);
+    static_assert(encodeExpGolomb(8U).numBits.value() == 2 * 3 + 1);
+    static_assert(encodeExpGolomb(17U).value == 0b000010010);
+    static_assert(encodeExpGolomb(17U).numBits.value() == 2 * 4 + 1);
+    static_assert(encodeExpGolomb(42U).value == 0b00000101011);
+    static_assert(encodeExpGolomb(42U).numBits.value() == 2 * 5 + 1);
   }
 
   void testDecodeExpGolomb() {
@@ -128,24 +148,24 @@ public:
   }
 
   void testEncodeSignedExpGolomb() {
-    static_assert(encodeSignedExpGolomb(0).first == 0b1);
-    static_assert(encodeSignedExpGolomb(0).second == 1_bits);
-    static_assert(encodeSignedExpGolomb(1).first == 0b010);
-    static_assert(encodeSignedExpGolomb(1).second == 3_bits);
-    static_assert(encodeSignedExpGolomb(8).first == 0b000010000);
-    static_assert(encodeSignedExpGolomb(8).second.value() == 2 * 4 + 1);
-    static_assert(encodeSignedExpGolomb(17).first == 0b00000100010);
-    static_assert(encodeSignedExpGolomb(17).second.value() == 2 * 5 + 1);
-    static_assert(encodeSignedExpGolomb(42).first == 0b0000001010100);
-    static_assert(encodeSignedExpGolomb(42).second.value() == 2 * 6 + 1);
-    static_assert(encodeSignedExpGolomb(-1).first == 0b011);
-    static_assert(encodeSignedExpGolomb(-1).second == 3_bits);
-    static_assert(encodeSignedExpGolomb(-8).first == 0b000010001);
-    static_assert(encodeSignedExpGolomb(-8).second.value() == 2 * 4 + 1);
-    static_assert(encodeSignedExpGolomb(-17).first == 0b00000100011);
-    static_assert(encodeSignedExpGolomb(-17).second.value() == 2 * 5 + 1);
-    static_assert(encodeSignedExpGolomb(-42).first == 0b0000001010101);
-    static_assert(encodeSignedExpGolomb(-42).second.value() == 2 * 6 + 1);
+    static_assert(encodeSignedExpGolomb(0).value == 0b1);
+    static_assert(encodeSignedExpGolomb(0).numBits == 1_bits);
+    static_assert(encodeSignedExpGolomb(1).value == 0b010);
+    static_assert(encodeSignedExpGolomb(1).numBits == 3_bits);
+    static_assert(encodeSignedExpGolomb(8).value == 0b000010000);
+    static_assert(encodeSignedExpGolomb(8).numBits.value() == 2 * 4 + 1);
+    static_assert(encodeSignedExpGolomb(17).value == 0b00000100010);
+    static_assert(encodeSignedExpGolomb(17).numBits.value() == 2 * 5 + 1);
+    static_assert(encodeSignedExpGolomb(42).value == 0b0000001010100);
+    static_assert(encodeSignedExpGolomb(42).numBits.value() == 2 * 6 + 1);
+    static_assert(encodeSignedExpGolomb(-1).value == 0b011);
+    static_assert(encodeSignedExpGolomb(-1).numBits == 3_bits);
+    static_assert(encodeSignedExpGolomb(-8).value == 0b000010001);
+    static_assert(encodeSignedExpGolomb(-8).numBits.value() == 2 * 4 + 1);
+    static_assert(encodeSignedExpGolomb(-17).value == 0b00000100011);
+    static_assert(encodeSignedExpGolomb(-17).numBits.value() == 2 * 5 + 1);
+    static_assert(encodeSignedExpGolomb(-42).value == 0b0000001010101);
+    static_assert(encodeSignedExpGolomb(-42).numBits.value() == 2 * 6 + 1);
   }
 
   void testDecodeSignedExpGolomb() {
@@ -158,6 +178,69 @@ public:
     static_assert(decodeSignedExpGolomb(0b000010001U) == -8);
     static_assert(decodeSignedExpGolomb(0b00000100011U) == -17);
     static_assert(decodeSignedExpGolomb(0b0000001010101U) == -42);
+  }
+
+  void testEncodeFibonacci() {
+    TEST_ASSERT_EQUALS(0b11U, encodeFibonacci(1U).value);
+    TEST_ASSERT_EQUALS(2_bits, encodeFibonacci(1U).numBits);
+    TEST_ASSERT_EQUALS(0b11000U, encodeFibonacci(5U).value);
+    TEST_ASSERT_EQUALS(5_bits, encodeFibonacci(5U).numBits);
+    TEST_ASSERT_EQUALS(0b110001U, encodeFibonacci(9U).value);
+    TEST_ASSERT_EQUALS(6_bits, encodeFibonacci(9U).numBits);
+    TEST_ASSERT_EQUALS(0b1100001U, encodeFibonacci(14U).value);
+    TEST_ASSERT_EQUALS(7_bits, encodeFibonacci(14U).numBits);
+    TEST_ASSERT_EQUALS(0b1100010010U, encodeFibonacci(65U).value);
+    TEST_ASSERT_EQUALS(10_bits, encodeFibonacci(65U).numBits);
+    TEST_ASSERT_EQUALS(0b11000101000U, encodeFibonacci(107U).value);
+    TEST_ASSERT_EQUALS(11_bits, encodeFibonacci(107U).numBits);
+    TEST_ASSERT_EQUALS(0xD402A1520AAU, encodeFibonacci(1073741824U).value);
+    TEST_ASSERT_EQUALS(44_bits, encodeFibonacci(1073741824U).numBits);
+  }
+
+  void testDecodeFibonacci() {
+    TEST_ASSERT_EQUALS(1U, decodeFibonacci(0b11));
+    TEST_ASSERT_EQUALS(5U, decodeFibonacci(0b11000));
+    TEST_ASSERT_EQUALS(9U, decodeFibonacci(0b110001));
+    TEST_ASSERT_EQUALS(14U, decodeFibonacci(0b1100001));
+    TEST_ASSERT_EQUALS(65U, decodeFibonacci(0b1100010010));
+    TEST_ASSERT_EQUALS(107U, decodeFibonacci(0b11000101000));
+    TEST_ASSERT_EQUALS(1073741824U, decodeFibonacci(0xD402A1520AAU));
+  }
+
+  void testEncodeSignedFibonacci() {
+    TEST_ASSERT_EQUALS(0b1101000U, encodeNegaFibonacci(-11).value);
+    TEST_ASSERT_EQUALS(7_bits, encodeNegaFibonacci(-11).numBits);
+    TEST_ASSERT_EQUALS(0b1100000U, encodeNegaFibonacci(-8).value);
+    TEST_ASSERT_EQUALS(7_bits, encodeNegaFibonacci(-8).numBits);
+    TEST_ASSERT_EQUALS(0b11000U, encodeNegaFibonacci(-3).value);
+    TEST_ASSERT_EQUALS(5_bits, encodeNegaFibonacci(-3).numBits);
+    TEST_ASSERT_EQUALS(0b110U, encodeNegaFibonacci(-1).value);
+    TEST_ASSERT_EQUALS(3_bits, encodeNegaFibonacci(-1).numBits);
+    TEST_ASSERT_EQUALS(0b11U, encodeNegaFibonacci(1).value);
+    TEST_ASSERT_EQUALS(2_bits, encodeNegaFibonacci(1).numBits);
+    TEST_ASSERT_EQUALS(0b1101U, encodeNegaFibonacci(3).value);
+    TEST_ASSERT_EQUALS(4_bits, encodeNegaFibonacci(3).numBits);
+    TEST_ASSERT_EQUALS(0b110101U, encodeNegaFibonacci(8).value);
+    TEST_ASSERT_EQUALS(6_bits, encodeNegaFibonacci(8).numBits);
+    TEST_ASSERT_EQUALS(0b11001001U, encodeNegaFibonacci(11).value);
+    TEST_ASSERT_EQUALS(8_bits, encodeNegaFibonacci(11).numBits);
+    TEST_ASSERT_EQUALS(0x302A94408154U, encodeNegaFibonacci(1073741824).value);
+    TEST_ASSERT_EQUALS(46_bits, encodeNegaFibonacci(1073741824).numBits);
+    TEST_ASSERT_EQUALS(0x1A80814A9401U, encodeNegaFibonacci(-1073741824).value);
+    TEST_ASSERT_EQUALS(45_bits, encodeNegaFibonacci(-1073741824).numBits);
+  }
+
+  void testDecodeSignedFibonacci() {
+    TEST_ASSERT_EQUALS(-11, decodeNegaFibonacci(0b1101000));
+    TEST_ASSERT_EQUALS(-8, decodeNegaFibonacci(0b1100000));
+    TEST_ASSERT_EQUALS(-3, decodeNegaFibonacci(0b11000));
+    TEST_ASSERT_EQUALS(-1, decodeNegaFibonacci(0b110));
+    TEST_ASSERT_EQUALS(1, decodeNegaFibonacci(0b11));
+    TEST_ASSERT_EQUALS(3, decodeNegaFibonacci(0b1101));
+    TEST_ASSERT_EQUALS(8, decodeNegaFibonacci(0b110101));
+    TEST_ASSERT_EQUALS(11, decodeNegaFibonacci(0b11001001));
+    TEST_ASSERT_EQUALS(1073741824, decodeNegaFibonacci(0x302A94408154U));
+    TEST_ASSERT_EQUALS(-1073741824, decodeNegaFibonacci(0x1A80814A9401U));
   }
 
   void testHexString() {
@@ -921,6 +1004,8 @@ public:
     TEST_ADD(TestTypes::testChar);
     TEST_ADD(TestTypes::testExpGolombBits);
     TEST_ADD(TestTypes::testSignedExpGolombBits);
+    TEST_ADD(TestTypes::testFibonacciBits);
+    TEST_ADD(TestTypes::testNegaFibonacciBits);
     TEST_ADD(TestTypes::testOptionalBits);
     TEST_ADD(TestTypes::testBitList);
     TEST_ADD(TestTypes::testChars);
@@ -999,6 +1084,32 @@ public:
         intmax_t{-0x3FFFFFFFFFFFFFFF},
         toBytes({0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF8}),
         "-4611686018427387903", 125_bits, false);
+  }
+
+  void testFibonacciBits() {
+    static_assert(sizeof(FibonacciBits<>::value_type) >= sizeof(uint32_t));
+    static_assert(FibonacciBits<uint32_t>::minNumBits() == 2_bits);
+    static_assert(FibonacciBits<uint32_t>::maxNumBits() == 48_bits);
+
+    checkValueBitfield<FibonacciBits<>>(uint32_t{1}, toBytes({0xC0}), "1", 2_bits, false);
+    checkValueBitfield<FibonacciBits<>>(uint32_t{107}, toBytes({0x14, 0x60}), "107", 11_bits, false);
+    checkValueBitfield<FibonacciBits<>>(uint32_t{0xFFFFFFFF}, toBytes({0x24, 0x88, 0x08, 0xA2, 0xA1, 0x16}),
+                                        "4294967295", 47_bits, false);
+  }
+
+  void testNegaFibonacciBits() {
+    static_assert(sizeof(NegaFibonacciBits<>::value_type) >= sizeof(int32_t));
+    static_assert(NegaFibonacciBits<int32_t>::minNumBits() == 2_bits);
+    static_assert(NegaFibonacciBits<int32_t>::maxNumBits() == 48_bits);
+
+    checkValueBitfield<NegaFibonacciBits<>>(int32_t{1}, toBytes({0xC0}), "1", 2_bits, false);
+    checkValueBitfield<NegaFibonacciBits<>>(int32_t{-1}, toBytes({0x60}), "-1", 3_bits, false);
+    checkValueBitfield<NegaFibonacciBits<>>(int32_t{107}, toBytes({0x0A, 0x30}), "107", 12_bits, false);
+    checkValueBitfield<NegaFibonacciBits<>>(int32_t{-107}, toBytes({0xA0, 0x98}), "-107", 13_bits, false);
+    checkValueBitfield<NegaFibonacciBits<>>(int32_t{0x3FFFFFFF}, toBytes({0x8A, 0x81, 0x02, 0x29, 0x54, 0x0C}),
+                                            "1073741823", 46_bits, false);
+    checkValueBitfield<NegaFibonacciBits<>>(int32_t{-0x3FFFFFFF}, toBytes({0x20, 0x29, 0x52, 0x81, 0x01, 0x58}),
+                                            "-1073741823", 45_bits, false);
   }
 
   void testOptionalBits() {

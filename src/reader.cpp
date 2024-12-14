@@ -84,6 +84,16 @@ namespace bml {
     return decodeSignedExpGolomb(read(exponent + 1_bits /* marker 1-bit */));
   }
 
+  uint32_t BitReader::readFibonacci() {
+    auto [value, numBits] = readUntilTwoOnes();
+    return decodeFibonacci(invertBits(value, numBits));
+  }
+
+  int32_t BitReader::readSignedFibonacci() {
+    auto [value, numBits] = readUntilTwoOnes();
+    return decodeNegaFibonacci(invertBits(value, numBits));
+  }
+
   void BitReader::skip(BitCount numBits) {
     auto numBitsSkipped = 0_bits;
     while (numBitsSkipped < numBits) {
@@ -119,6 +129,32 @@ namespace bml {
     read(numRemainingBits);
     numBits += numRemainingBits;
     return numBits;
+  }
+
+  EncodedValue<uint64_t> BitReader::readUntilTwoOnes() {
+    EncodedValue<uint64_t> result{};
+    while (!(cache & (cache >> 1U))) {
+      // as long as there are not two consecutive 1 bits, add all bits
+      if (cacheSize) {
+        result.numBits += cacheSize - 1_bits;
+        result.value <<= cacheSize - 1_bits;
+        result.value |= read(cacheSize - 1_bits);
+      }
+      makeAvailable(BYTE_SIZE);
+    }
+    bool lastBitSet = false;
+    bool nextBitSet = false;
+    while (true) {
+      nextBitSet = read();
+      result.numBits += 1_bits;
+      result.value <<= 1_bits;
+      result.value |= nextBitSet ? 1U : 0U;
+      if (nextBitSet && lastBitSet) {
+        break;
+      }
+      lastBitSet = nextBitSet;
+    }
+    return result;
   }
 
 } // namespace bml
