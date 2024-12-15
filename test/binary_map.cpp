@@ -22,8 +22,12 @@ namespace bml::detail {
 } // namespace bml::detail
 
 static_assert(sizeof(detail::CompileTimeValueHolder<1235445435ULL>) == 1);
+#ifdef __GNUC__
+// MSVC does not heed [[no_unique_address]] attribute,
+// see https://devblogs.microsoft.com/cppblog/msvc-cpp20-and-the-std-cpp20-switch/#c++20-[[no_unique_address]]
 static_assert(sizeof(mapExpGolombBits<uint32_t>()) == 1);
 static_assert(sizeof(assertByteAligned()) == 1);
+#endif
 
 class TestMappers : public Test::Suite {
 public:

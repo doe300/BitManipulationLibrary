@@ -205,14 +205,14 @@ public:                                                                         
 
     template <typename T>
     void printMember(std::ostream &os, std::string_view name, T &&last) {
-      os << name << " = " << PrintView{last};
+      os << name << " = " << printView(last);
     }
 
     template <typename T, typename... Tail>
     void printMember(std::ostream &os, std::string_view names, T &&head, Tail &&...tail) {
       auto nameEnd = names.find(",");
       auto nameLength = nameEnd != std::string_view::npos ? nameEnd : names.size();
-      os << names.substr(0, nameLength) << " = " << PrintView{head} << ", ";
+      os << names.substr(0, nameLength) << " = " << printView(head) << ", ";
       printMember(os, names.substr(nameEnd + 2), tail...);
     }
   } // namespace detail
