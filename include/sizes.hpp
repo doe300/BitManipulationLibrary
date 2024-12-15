@@ -73,20 +73,20 @@ namespace bml {
         return value;
       }
 
-      template <typename T>
+      template <std::integral T>
       constexpr friend T operator>>(T one, const SizeType &other) noexcept {
         return one >> (other.num * Size);
       }
-      template <typename T>
+      template <std::integral T>
       constexpr friend T operator<<(T one, const SizeType &other) noexcept {
         return one << (other.num * Size);
       }
 
-      template <typename T>
+      template <std::integral T>
       constexpr friend T &operator>>=(T &one, const SizeType &other) noexcept {
         return one >>= (other.num * Size);
       }
-      template <typename T>
+      template <std::integral T>
       constexpr friend T &operator<<=(T &one, const SizeType &other) noexcept {
         return one <<= (other.num * Size);
       }

@@ -9,6 +9,18 @@ The library is built with [CMake](https://cmake.org/) and requires a C++20 compl
 
 The main functionality of the library is the mapping of binary structures (e.g. parts of a binary data format) from/to C++ objects.
 The mapped types can be built-in and standard-library types (e.g. `uint32_t`, `std::vector`), predefined mapping types (see `types.hpp`) as well as custom user-defined types (POD types as well as more complex custom types with custom `read` and `write` functions).
+The size and interpretation of the binary representation is part of the object type definition.
+
+## Binary Mappers
+
+Binary mappers are another way of mapping objects from/to binary data (see `binary_map.hpp` header). The mappers are free-standing functions or functor types and thus do not require the mapped type to be modified for binary mapping. This also allows binary mappers to
+
+A) map foreign (e.g. standard library) types without the need to modify them and
+B) map the same type in different ways by implementing different mappers for each binary representation to map.
+
+TODO binary representation (e.g. order of members, number and interpretation of bits) is part of type definition.
+TODO Vs. Binary Map, representation is defined by mapping (function) object, independent of (memory) storage type
+TODO Vs. Bit View, storage type defines binary representation, does not store in-memory values (view on binary data)
 
 ### Basic Concepts
 
@@ -16,4 +28,5 @@ The mapped types can be built-in and standard-library types (e.g. `uint32_t`, `s
 - The `BitReader`/`BitWriter` (`reader.hpp` and `writer.hpp` headers) classes wrap a binary data stream for reading/writing and are responsible for the low-level (dis-)assembling of single bytes and extracting/outputting the next bytes from/to the underlying byte stream.
 The `BitReader` and `BitWriter` can wrap byte streams of different sources/sinks, e.g. an in-memory byte buffer (`std::span<std::byte>`) or callback functions producing/consuming a single byte at a time.
 > NOTE: The BitReader and BitWriter read/write data as big endian/MSB first.
-- The `types.hpp` header contains  an assortment of useful classes for representing binary-mapped data to use directly or wrap in user-defined mapping types.
+- The `types.hpp` header contains an assortment of useful classes for representing binary-mapped data to use directly or wrap in user-defined mapping types.
+- The `binary_map.hpp` header contains an assortment of predefined mapping functions and functor types to use directly or wrap in compound mappers (e.g. `mapCompound`) to map predefined or user-defined types.

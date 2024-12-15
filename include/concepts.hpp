@@ -79,5 +79,64 @@ namespace bml {
       { obj.get() } -> std::convertible_to<V>;
       obj.set(value);
     };
+
+    /**
+     * Concept checking whether the type is a direct value mapper.
+     *
+     * This concept checks whether instances of the given type can be used to map values of its #type nested member type
+     * from a BitReader/to a BitWriter.
+     */
+    template <typename T>
+    concept DirectMapper = requires(T obj) {
+      typename T::type;
+
+      { obj(std::declval<BitReader &>()) } -> std::convertible_to<typename T::type>;
+      obj(std::declval<BitWriter &>(), std::declval<const typename T::type &>());
+    };
+
+    /**
+     * Concept checking whether the type is a member value mapper.
+     *
+     * This concept checks whether instances of the given type can be used to map a member (of its #member_type) from
+     * its #object_type nested member type from a BitReader/to a BitWriter.
+     */
+    template <typename T>
+    concept MemberMapper = requires(T obj) {
+      typename T::object_type;
+      typename T::member_type;
+
+      obj(std::declval<BitReader &>(), std::declval<typename T::object_type &>());
+      obj(std::declval<BitWriter &>(), std::declval<const typename T::object_type &>());
+    };
+
+    /**
+     * Concept checking whether the given type is a homogeneous container which can be default-constructed and provides
+     * following member accesses:
+     * - operator[size_t] -> value_type&
+     * - resize(size_t)
+     */
+    template <typename T>
+    concept DefaultConstructibleResizeableContainer = requires(T obj) {
+      typename T::value_type;
+      T{};
+      { obj[std::declval<std::size_t>()] } -> std::same_as<typename T::value_type &>;
+      obj.resize(std::declval<std::size_t>());
+    };
+
+    /**
+     * Checks whether the given type is an enumeration type.
+     */
+    template <typename T>
+    concept Enum = std::is_enum_v<T>;
+
+    /**
+     * Checks whether the given type is a value mapper with a fixed binary representation size.
+     *
+     * This is determined by the presence of a #fixedSize() member function returning a BitCount (or ByteCount).
+     */
+    template <typename T>
+    concept FixedSizeMapper = requires(T obj) {
+      { obj.fixedSize() } -> std::convertible_to<BitCount>;
+    };
   } // namespace concepts
 } // namespace bml

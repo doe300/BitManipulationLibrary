@@ -18,7 +18,7 @@ namespace bml::detail {
 
     // integer multiples
     for (const auto &magnitude : MAGNITUDES) {
-      if ((value % magnitude.first) == 0) {
+      if (value >= magnitude.first && (value % magnitude.first) == 0) {
         if (auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value / magnitude.first);
             result.ec == std::errc{}) {
           *result.ptr++ = magnitude.second;
