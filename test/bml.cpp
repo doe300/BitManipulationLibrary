@@ -203,17 +203,9 @@ namespace bml {
 class TestCache : public Test::Suite {
 public:
   TestCache() : Test::Suite("Cache") {
-    TEST_ADD(TestCache::testCreateCache);
     TEST_ADD(TestCache::testFillCache);
     TEST_ADD(TestCache::testReadCache);
     TEST_ADD(TestCache::testFlushCache);
-    TEST_ADD(TestCache::testWriteCache);
-    TEST_ADD(TestCache::testWriteAndFlushCache);
-  }
-
-  void testCreateCache() {
-    TEST_ASSERT_EQUALS((Cache{0x1234000000000000, 16_bits}), createCache(0x1234, 16_bits));
-    static_assert(createCache(0x7, 3_bits).value == 0xE000000000000000);
   }
 
   void testFillCache() {
@@ -256,39 +248,6 @@ public:
                        flushFullCacheBytesHelper(Cache{0x1234000000000000, 15_bits}).second);
   }
 
-  void testWriteCache() {
-    TEST_ASSERT_EQUALS((Cache{0x091A000000000000, 17_bits}), writeCacheHelper(Cache{}, 0x1234, 17_bits));
-    TEST_ASSERT_EQUALS((Cache{0x4000000000000000, 3_bits}), writeCacheHelper(Cache{}, 0x2, 3_bits));
-    TEST_ASSERT_EQUALS((Cache{0x1234091A00000000, 33_bits}),
-                       writeCacheHelper(Cache{0x1234000000000000, 16_bits}, 0x1234, 17_bits));
-    TEST_ASSERT_EQUALS((Cache{0xE800000000000000, 6_bits}),
-                       writeCacheHelper(Cache{0xE000000000000000, 3_bits}, 0x2, 3_bits));
-    TEST_ASSERT_EQUALS((Cache{0x1224680000000000, 23_bits}),
-                       writeCacheHelper(Cache{0x1200000000000000, 7_bits}, 0x1234, 16_bits));
-  }
-
-  void testWriteAndFlushCache() {
-    TEST_ASSERT_EQUALS(0x091A000000000000U, writeAndFlushCacheHelper(Cache{}, 0x1234, 17_bits).first);
-    TEST_ASSERT_EQUALS((Cache{0x0, 1_bits}), writeAndFlushCacheHelper(Cache{}, 0x1234, 17_bits).second);
-    TEST_ASSERT_EQUALS(0x0U, writeAndFlushCacheHelper(Cache{}, 0x2, 3_bits).first);
-    TEST_ASSERT_EQUALS((Cache{0x4000000000000000, 3_bits}), writeAndFlushCacheHelper(Cache{}, 0x2, 3_bits).second);
-    TEST_ASSERT_EQUALS(0x1234091A00000000U,
-                       writeAndFlushCacheHelper(Cache{0x1234000000000000, 16_bits}, 0x1234, 17_bits).first);
-    TEST_ASSERT_EQUALS((Cache{0x0, 1_bits}),
-                       writeAndFlushCacheHelper(Cache{0x1234000000000000, 16_bits}, 0x1234, 17_bits).second);
-    TEST_ASSERT_EQUALS(0x0U, writeAndFlushCacheHelper(Cache{0xE000000000000000, 3_bits}, 0x2, 3_bits).first);
-    TEST_ASSERT_EQUALS((Cache{0xE800000000000000, 6_bits}),
-                       writeAndFlushCacheHelper(Cache{0xE000000000000000, 3_bits}, 0x2, 3_bits).second);
-    TEST_ASSERT_EQUALS(0x1224000000000000U,
-                       writeAndFlushCacheHelper(Cache{0x1200000000000000, 7_bits}, 0x1234, 16_bits).first);
-    TEST_ASSERT_EQUALS((Cache{0x6800000000000000, 7_bits}),
-                       writeAndFlushCacheHelper(Cache{0x1200000000000000, 7_bits}, 0x1234, 16_bits).second);
-    TEST_ASSERT_EQUALS(0x123456789ABCDEC4U,
-                       writeAndFlushCacheHelper(Cache{0x123456789ABCDE80, 57_bits}, 0x112, 9_bits).first);
-    TEST_ASSERT_EQUALS((Cache{0x8000000000000000, 2_bits}),
-                       writeAndFlushCacheHelper(Cache{0x123456789ABCDE80, 57_bits}, 0x112, 9_bits).second);
-  }
-
 private:
   static Cache fillCacheHelper(Cache cache, BitCount numBits, std::initializer_list<const uint8_t> input) {
     fillCache(
@@ -315,28 +274,6 @@ private:
     Cache output{};
     flushFullCacheBytes(
         cache,
-        [&output](std::byte nextByte) {
-          if (output.size >= sizeof(std::uintmax_t) * 1_bytes)
-            return false;
-          std::uintmax_t tmp = static_cast<uint8_t>(nextByte);
-          output.value |= tmp << (sizeof(std::uintmax_t) * 1_bytes - 1_bytes - output.size);
-          output.size += 1_bytes;
-          return true;
-        },
-        []() { throw; });
-    return std::make_pair(output.value, cache);
-  }
-
-  static Cache writeCacheHelper(Cache cache, std::uintmax_t value, BitCount numBits) {
-    writeToCache(cache, value, numBits);
-    return cache;
-  }
-
-  static std::pair<std::uintmax_t, Cache> writeAndFlushCacheHelper(Cache cache, std::uintmax_t value,
-                                                                   BitCount numBits) {
-    Cache output{};
-    writeToCacheAndFlushFullBytes(
-        cache, value, numBits,
         [&output](std::byte nextByte) {
           if (output.size >= sizeof(std::uintmax_t) * 1_bytes)
             return false;
@@ -420,6 +357,7 @@ public:
     auto *ptr = buf.data() + 13_bytes;
     TEST_ASSERT_EQUALS(13, std::distance(buf.data(), ptr));
 
+    TEST_ASSERT_EQUALS("0b", (0_bits).toString());
     TEST_ASSERT_EQUALS("17b", (17_bits).toString());
     TEST_ASSERT_EQUALS("2kb", (2048_bits).toString());
     TEST_ASSERT_EQUALS("2.1kb", (2148_bits).toString());

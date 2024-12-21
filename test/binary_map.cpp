@@ -263,7 +263,7 @@ private:
       BitWriter writer{outData};
       TEST_THROWS_NOTHING(map(writer, expectedValue));
       TEST_ASSERT_EQUALS(numBits, writer.position());
-      writer.fillToAligment(1_bytes, 0);
+      writer.flush();
       TEST_ASSERT_EQUALS(data, outData);
     }
   }
@@ -287,7 +287,7 @@ private:
       BitWriter writer{outData};
       TEST_THROWS_NOTHING(map(writer, expectedObject));
       TEST_ASSERT_EQUALS(numBits, writer.position());
-      writer.fillToAligment(1_bytes, 0);
+      writer.flush();
       TEST_ASSERT_EQUALS(data, outData);
     }
   }

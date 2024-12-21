@@ -15,10 +15,20 @@ protected:
     requires(Readable<T>)
   {
     BitReader reader{data};
+    TEST_ASSERT(numBits == 0_bits || reader.hasMoreBytes());
     T value{};
     TEST_THROWS_NOTHING(bml::read(reader, value));
     TEST_ASSERT_EQUALS(numBits, reader.position());
     TEST_ASSERT_EQUALS(expectedValue, value);
+    TEST_ASSERT(numBits != ByteCount{data.size()} || !reader.hasMoreBytes());
+
+    reader = createGeneratorReader(data);
+    TEST_ASSERT(numBits == 0_bits || reader.hasMoreBytes());
+    value = T{};
+    TEST_THROWS_NOTHING(bml::read(reader, value));
+    TEST_ASSERT_EQUALS(numBits, reader.position());
+    TEST_ASSERT_EQUALS(expectedValue, value);
+    TEST_ASSERT(numBits != ByteCount{data.size()} || !reader.hasMoreBytes());
   }
 
   template <typename T>
@@ -29,7 +39,14 @@ protected:
     BitWriter writer{data};
     TEST_THROWS_NOTHING(bml::write(writer, value));
     TEST_ASSERT_EQUALS(numBits, writer.position());
-    writer.fillToAligment(1_bytes, 0);
+    writer.flush();
+    TEST_ASSERT_EQUALS(expectedData, data);
+
+    data = std::vector<std::byte>(expectedData.size());
+    writer = createConsumerWriter(data);
+    TEST_THROWS_NOTHING(bml::write(writer, value));
+    TEST_ASSERT_EQUALS(numBits, writer.position());
+    writer.flush();
     TEST_ASSERT_EQUALS(expectedData, data);
   }
 
@@ -40,20 +57,39 @@ protected:
     BitReader reader{data};
     TEST_THROWS_NOTHING(bml::skip<T>(reader));
     TEST_ASSERT_EQUALS(numBits, reader.position());
+
+    reader = createGeneratorReader(data);
+    TEST_THROWS_NOTHING(bml::skip<T>(reader));
+    TEST_ASSERT_EQUALS(numBits, reader.position());
   }
 
   template <typename T>
   void checkCopy(std::span<const std::byte> expectedData, BitCount numBits = ByteCount{sizeof(T)})
     requires(Copyable<T>)
   {
-    BitReader reader{expectedData};
-    std::vector<std::byte> data(expectedData.size());
-    BitWriter writer{data};
-    TEST_THROWS_NOTHING(bml::copy<T>(reader, writer));
-    TEST_ASSERT_EQUALS(numBits, reader.position());
-    TEST_ASSERT_EQUALS(numBits, writer.position());
-    writer.fillToAligment(1_bytes, 0);
-    TEST_ASSERT_EQUALS(expectedData, data);
+    {
+      // Copy directly on byte buffer
+      BitReader reader{expectedData};
+      std::vector<std::byte> data(expectedData.size());
+      BitWriter writer{data};
+      TEST_THROWS_NOTHING(bml::copy<T>(reader, writer));
+      TEST_ASSERT_EQUALS(numBits, reader.position());
+      TEST_ASSERT_EQUALS(numBits, writer.position());
+      writer.flush();
+      TEST_ASSERT_EQUALS(expectedData, data);
+    }
+
+    {
+      // Copy on consumers/generators
+      BitReader reader{createGeneratorReader(expectedData)};
+      std::vector<std::byte> data(expectedData.size());
+      BitWriter writer{createConsumerWriter(data)};
+      TEST_THROWS_NOTHING(bml::copy<T>(reader, writer));
+      TEST_ASSERT_EQUALS(numBits, reader.position());
+      TEST_ASSERT_EQUALS(numBits, writer.position());
+      writer.flush();
+      TEST_ASSERT_EQUALS(expectedData, data);
+    }
   }
 
   template <typename T>
@@ -78,11 +114,38 @@ protected:
       TEST_ASSERT_NOT_EQUALS(bml::minNumBits<T>(), bml::maxNumBits<T>());
     }
   }
+
+private:
+  static BitReader createGeneratorReader(std::span<const std::byte> data) {
+    return BitReader{[data](std::byte &out) mutable {
+      if (data.empty()) {
+        return false;
+      }
+      out = data.front();
+      data = data.subspan<1>();
+      return true;
+    }};
+  }
+
+  static BitWriter createConsumerWriter(std::span<std::byte> data) {
+    return BitWriter{[data{std::span{data}}](std::byte in) mutable {
+      if (data.empty()) {
+        return false;
+      }
+      data.front() = in;
+      data = data.subspan<1>();
+      return true;
+    }};
+  }
 };
 
 class TestIO : public TestBase {
 public:
   TestIO() : TestBase("IO") {
+    TEST_ADD(TestIO::testEmptyReader);
+    TEST_ADD(TestIO::testEmptyWriter);
+    TEST_ADD(TestIO::testReaderEos);
+    TEST_ADD(TestIO::testWriterEos);
     TEST_ADD(TestIO::testBool);
     TEST_ADD(TestIO::testByte);
     TEST_ADD(TestIO::testChar);
@@ -97,6 +160,106 @@ public:
     TEST_ADD(TestIO::testRawBytes);
     TEST_ADD(TestIO::testSizes);
     TEST_ADD(TestIO::testReadOptional);
+  }
+
+  void testEmptyReader() {
+    BitReader reader{};
+
+    TEST_ASSERT_FALSE(reader.hasMoreBytes());
+    TEST_ASSERT_EQUALS(0_bits, reader.position());
+    TEST_THROWS(reader.skipToAligment(8_bits), std::runtime_error);
+    TEST_THROWS(reader.assertAlignment(1_bytes), std::runtime_error);
+    TEST_THROWS(reader.read(), std::runtime_error);
+    TEST_THROWS(reader.peek(1_bytes), std::runtime_error);
+    TEST_THROWS(reader.read(1_bytes), std::runtime_error);
+    TEST_THROWS(reader.readBytes(1_bytes), std::runtime_error);
+    TEST_THROWS(reader.readByte(), std::runtime_error);
+    std::vector<std::byte> data(45);
+    TEST_THROWS(reader.readBytesInto(data), std::runtime_error);
+    TEST_THROWS(reader.readExpGolomb(), std::runtime_error);
+    TEST_THROWS(reader.readSignedExpGolomb(), std::runtime_error);
+    TEST_THROWS(reader.readUtf8CodePoint(), std::runtime_error);
+    TEST_THROWS(reader.readUtf16CodePoint(), std::runtime_error);
+    TEST_THROWS(reader.readFibonacci(), std::runtime_error);
+    TEST_THROWS(reader.readSignedFibonacci(), std::runtime_error);
+    TEST_THROWS(reader.skip(1_bytes), std::runtime_error);
+    TEST_ASSERT_FALSE(reader.hasMoreBytes());
+  }
+
+  void testEmptyWriter() {
+    BitWriter writer{};
+
+    TEST_ASSERT_EQUALS(0_bits, writer.position());
+    TEST_THROWS(writer.fillToAligment(8_bits, false), std::runtime_error);
+    TEST_THROWS(writer.assertAlignment(1_bytes), std::runtime_error);
+    TEST_THROWS(writer.write(true), std::runtime_error);
+    TEST_THROWS(writer.write(42, 17_bits), std::runtime_error);
+    TEST_THROWS(writer.writeBytes(42, 3_bytes), std::runtime_error);
+    TEST_THROWS(writer.writeByte(std::byte{17}), std::runtime_error);
+    std::vector<std::byte> data(45);
+    TEST_THROWS(writer.writeBytes(data), std::runtime_error);
+    TEST_THROWS(writer.writeExpGolomb(42), std::runtime_error);
+    TEST_THROWS(writer.writeSignedExpGolomb(-420), std::runtime_error);
+    TEST_THROWS(writer.writeUtf8CodePoint(U'⠁'), std::runtime_error);
+    TEST_THROWS(writer.writeUtf16CodePoint(U'⠁'), std::runtime_error);
+    TEST_THROWS(writer.writeFibonacci(42), std::runtime_error);
+    TEST_THROWS(writer.writeSignedFibonacci(-14), std::runtime_error);
+    TEST_THROWS(writer.flush(), std::runtime_error);
+  }
+
+  void testReaderEos() {
+    BitReader reader1{toBytes({})};
+    BitReader reader2{[](std::byte &) { return false; }};
+
+    for (auto *reader : {&reader1, &reader2}) {
+      TEST_ASSERT_EQUALS(0_bits, reader->position());
+      TEST_ASSERT_FALSE(reader->hasMoreBytes());
+      TEST_ASSERT_EQUALS(0_bits, reader->skipToAligment(1_bytes));
+      TEST_THROWS_NOTHING(reader->assertAlignment(1_bytes));
+      TEST_THROWS(reader->read(), std::out_of_range);
+      TEST_THROWS(reader->peek(7_bits), std::out_of_range);
+      TEST_THROWS(reader->read(3_bits), std::out_of_range);
+      TEST_THROWS(reader->readBytes(2_bytes), std::out_of_range);
+      TEST_THROWS(reader->readByte(), std::out_of_range);
+      std::vector<std::byte> data(42);
+      TEST_THROWS(reader->readBytesInto(data), std::out_of_range);
+      TEST_THROWS(reader->readExpGolomb(), std::out_of_range);
+      TEST_THROWS(reader->readSignedExpGolomb(), std::out_of_range);
+      TEST_THROWS(reader->readUtf8CodePoint(), std::out_of_range);
+      TEST_THROWS(reader->readUtf16CodePoint(), std::out_of_range);
+      TEST_THROWS(reader->readFibonacci(), std::out_of_range);
+      TEST_THROWS(reader->readSignedFibonacci(), std::out_of_range);
+      TEST_THROWS(reader->skip(1_bytes), std::out_of_range);
+      TEST_ASSERT_FALSE(reader->hasMoreBytes());
+    }
+  }
+
+  void testWriterEos() {
+    std::vector<std::byte> buffer{};
+    BitWriter writer1{buffer};
+    BitWriter writer2{[](std::byte) { return false; }};
+
+    for (auto *writer : {&writer1, &writer2}) {
+      TEST_ASSERT_EQUALS(0_bits, writer->position());
+      TEST_ASSERT_EQUALS(0_bits, writer->fillToAligment(8_bits, false));
+      TEST_THROWS_NOTHING(writer->assertAlignment(1_bytes));
+      // is cached, not yet written back to the sink
+      TEST_THROWS_NOTHING(writer->write(true));
+      TEST_THROWS(writer->flush(), std::out_of_range);
+      TEST_THROWS(writer->write(42, 16_bits), std::out_of_range);
+      TEST_THROWS(writer->writeBytes(42, 3_bytes), std::out_of_range);
+      TEST_THROWS(writer->writeByte(std::byte{17}), std::out_of_range);
+      std::vector<std::byte> data(45);
+      TEST_THROWS(writer->writeBytes(data), std::out_of_range);
+      TEST_THROWS(writer->writeExpGolomb(42), std::out_of_range);
+      TEST_THROWS(writer->writeSignedExpGolomb(-420), std::out_of_range);
+      TEST_THROWS(writer->flush(), std::out_of_range);
+      TEST_THROWS(writer->writeUtf8CodePoint(U'⠁'), std::out_of_range);
+      TEST_THROWS(writer->writeUtf16CodePoint(U'⠁'), std::out_of_range);
+      TEST_THROWS(writer->writeFibonacci(42), std::out_of_range);
+      TEST_THROWS(writer->writeSignedFibonacci(-14), std::out_of_range);
+      TEST_THROWS(writer->flush(), std::out_of_range);
+    }
   }
 
   void testBool() {

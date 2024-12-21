@@ -16,6 +16,14 @@ using namespace bml::literals;
 
 static const std::string EXPECTED_VALUE = "Foo Bar";
 
+/**
+ * Maps a std::string from/to binary prefix-string representation.
+ *
+ * The binary representation has following layout:
+ *
+ * - 1 Byte: size N in characters
+ * - N Bytes: string contents
+ */
 struct MapPrefixString {
   using type = std::string;
 
@@ -34,6 +42,13 @@ struct MapPrefixString {
   using MapString = bml::MapContainer<std::string, decltype(mapChar)>;
 };
 
+/**
+ * Maps a std::string from/to binary fixed-size string representation.
+ *
+ * The binary representation has following layout:
+ *
+ * - N Bytes: string contents
+ */
 struct MapFixedSizeString {
   using type = std::string;
 
@@ -49,6 +64,14 @@ struct MapFixedSizeString {
   using MapString = bml::MapContainer<std::string, decltype(mapChar)>;
 };
 
+/**
+ * Maps a std::string from/to binary zero-terminated string representation.
+ *
+ * The binary representation has following layout:
+ *
+ * - ? Bytes: string contents
+ * - 1 Byte: NUL-Byte terminating the string
+ */
 struct MapZeroTerminatedString {
   using type = std::string;
 

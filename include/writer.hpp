@@ -5,9 +5,9 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <span>
-#include <variant>
 
 namespace bml {
   /**
@@ -21,6 +21,8 @@ namespace bml {
    */
   class BitWriter {
   public:
+    class WriterImpl;
+
     /**
      * A byte sink consuming a single byte at a time.
      *
@@ -33,41 +35,29 @@ namespace bml {
      *
      * NOTE: The underlying memory range must be kept alive until the BitWriter is done writing!
      */
-    struct ByteRange {
-      std::byte *begin;
-      std::byte *end;
-    };
+    using ByteRange = std::span<std::byte>;
 
-    using ByteSink = std::variant<std::monostate, ByteConsumer, ByteRange>;
-
-    static constexpr ByteCount BYTE_SIZE{1};
-    static constexpr BitCount CACHE_SIZE{static_cast<std::size_t>(std::numeric_limits<std::uintmax_t>::digits)};
-
-    BitWriter() noexcept = default;
-    BitWriter(ByteConsumer &&consumer) noexcept : sink(std::move(consumer)) {}
-    BitWriter(uint8_t *begin, uint8_t *end) noexcept
-        : sink(ByteRange{reinterpret_cast<std::byte *>(begin), reinterpret_cast<std::byte *>(end)}) {}
-    BitWriter(std::byte *begin, std::byte *end) noexcept : sink(ByteRange{begin, end}) {}
-
-    BitWriter(std::span<uint8_t> range) noexcept
-        : sink(ByteRange{reinterpret_cast<std::byte *>(range.data()),
-                         reinterpret_cast<std::byte *>(range.data() + range.size())}) {}
-    BitWriter(std::span<std::byte> range) noexcept : sink(ByteRange{range.data(), range.data() + range.size()}) {}
+    BitWriter() noexcept;
+    explicit BitWriter(ByteConsumer &&consumer);
+    explicit BitWriter(ByteRange range);
+    explicit BitWriter(uint8_t *begin, uint8_t *end) : BitWriter(std::as_writable_bytes(std::span{begin, end})) {}
+    explicit BitWriter(std::byte *begin, std::byte *end) : BitWriter(ByteRange{begin, end}) {}
+    explicit BitWriter(std::span<uint8_t> range) : BitWriter(std::as_writable_bytes(range)) {}
 
     // Disallow copying, since the different byte sinks might behave differently when being copied
     BitWriter(const BitWriter &) = delete;
     BitWriter(BitWriter &&) noexcept = default;
-    ~BitWriter() noexcept = default;
+    ~BitWriter() noexcept;
 
     BitWriter &operator=(const BitWriter &) = delete;
-    BitWriter &operator=(BitWriter &&) noexcept = default;
+    BitWriter &operator=(BitWriter && other) noexcept;
 
     /**
      * Returns the number of bits already written.
      *
      * If the start of the bit sink is properly aligned, this can also be used to determine the current alignment.
      */
-    BitCount position() const noexcept { return bytesWritten + cacheSize; }
+    BitCount position() const noexcept;
 
     /**
      * Writes the given bit value until the given bit alignment is achieved.
@@ -105,7 +95,7 @@ namespace bml {
      *
      * Throws an exception if the write position is not byte aligned, see assertAlignment().
      */
-    void writeByte(std::byte byte) { writeBytes(static_cast<uint8_t>(byte), BYTE_SIZE); }
+    void writeByte(std::byte byte);
 
     /**
      * Writes all bytes in the given input range.
@@ -148,15 +138,16 @@ namespace bml {
      */
     void writeSignedFibonacci(int32_t value);
 
-  private:
-    void flushFullBytes();
+    /**
+     * Fills the last cached partial byte with trailing zeroes and writes all bytes to the underlying byte sink.
+     *
+     * This function is equivalent to:
+     *   fillToAligment(1_bytes, 0);
+     */
+    void flush();
 
   private:
-    ByteCount bytesWritten{};
-    BitCount cacheSize{};
-    /** is always left-adjusted to write the highest bits first */
-    std::uintmax_t cache = 0;
-    ByteSink sink;
+    std::unique_ptr<WriterImpl> impl;
   };
 
 } // namespace bml

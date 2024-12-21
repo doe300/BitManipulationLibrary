@@ -17,7 +17,7 @@ namespace bml {
    */
   template <typename T>
   constexpr std::size_t bits() noexcept
-    requires(std::integral<T> || std::is_enum_v<T>)
+    requires((std::integral<T> || std::is_enum_v<T>) && !std::is_same_v<T, bool>)
   {
     return std::numeric_limits<std::make_unsigned_t<T>>::digits;
   }
@@ -25,8 +25,10 @@ namespace bml {
   /**
    * Returns the fixed number of binary data bits for the bool type.
    */
-  template <>
-  constexpr std::size_t bits<bool>() noexcept {
+  template <typename T>
+  constexpr std::size_t bits() noexcept
+    requires(std::is_same_v<T, bool>)
+  {
     return 1U;
   }
 

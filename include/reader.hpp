@@ -7,8 +7,8 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <span>
-#include <variant>
 
 namespace bml {
 
@@ -22,6 +22,8 @@ namespace bml {
    */
   class BitReader {
   public:
+    class ReaderImpl;
+
     /**
      * A byte source providing a single byte at a time in its output parameter.
      *
@@ -35,42 +37,29 @@ namespace bml {
      * NOTE: The underlying memory range must be kept alive until the BitReader is done reading, the memory is not
      * copied!
      */
-    struct ByteRange {
-      const std::byte *begin;
-      const std::byte *end;
-    };
+    using ByteRange = std::span<const std::byte>;
 
-    using ByteSource = std::variant<std::monostate, ByteGenerator, ByteRange>;
-
-    static constexpr ByteCount BYTE_SIZE{1};
-    static constexpr BitCount CACHE_SIZE{static_cast<std::size_t>(std::numeric_limits<std::uintmax_t>::digits)};
-
-    BitReader() noexcept = default;
-    BitReader(ByteGenerator &&generator) noexcept : source(std::move(generator)) {}
-    BitReader(const uint8_t *begin, const uint8_t *end) noexcept
-        : source(ByteRange{reinterpret_cast<const std::byte *>(begin), reinterpret_cast<const std::byte *>(end)}) {}
-    BitReader(const std::byte *begin, const std::byte *end) noexcept : source(ByteRange{begin, end}) {}
-
-    BitReader(std::span<const uint8_t> range) noexcept
-        : source(ByteRange{reinterpret_cast<const std::byte *>(range.data()),
-                           reinterpret_cast<const std::byte *>(range.data() + range.size())}) {}
-    BitReader(std::span<const std::byte> range) noexcept
-        : source(ByteRange{range.data(), range.data() + range.size()}) {}
+    BitReader() noexcept;
+    explicit BitReader(ByteGenerator &&generator);
+    explicit BitReader(ByteRange range);
+    explicit BitReader(const uint8_t *begin, const uint8_t *end) : BitReader(std::as_bytes(std::span{begin, end})) {}
+    explicit BitReader(const std::byte *begin, const std::byte *end) : BitReader(ByteRange{begin, end}) {}
+    explicit BitReader(std::span<const uint8_t> range) : BitReader(std::as_bytes(range)) {}
 
     // Disallow copying, since the different byte sources might behave differently when being copied
     BitReader(const BitReader &) = delete;
     BitReader(BitReader &&) noexcept = default;
-    ~BitReader() noexcept = default;
+    ~BitReader() noexcept;
 
     BitReader &operator=(const BitReader &) = delete;
-    BitReader &operator=(BitReader &&) noexcept = default;
+    BitReader &operator=(BitReader && other) noexcept;
 
     /**
      * Returns the number of bits already read.
      *
      * If the start of the bit source is properly aligned, this can also be used to determine the current alignment.
      */
-    BitCount position() const noexcept { return bytesRead - cacheSize; }
+    BitCount position() const noexcept;
 
     /*
      * Returns whether there is at least one more byte to read in the underlying byte source.
@@ -207,23 +196,7 @@ namespace bml {
     void skip(BitCount numBits);
 
   private:
-    void makeAvailable(BitCount numBits, bool throwOnEos = true);
-
-    /**
-     * Reads until the uppermost bit in the cache is set and return the number of leading zero bits.
-     */
-    BitCount readLeadingZeroes();
-    /**
-     * Reads until two consecutive one bits are set and return the value with then number of bits read.
-     */
-    EncodedValue<uint64_t> readUntilTwoOnes();
-
-  private:
-    ByteCount bytesRead{};
-    BitCount cacheSize{};
-    /** is always left-adjusted to read the highest bits first */
-    std::uintmax_t cache = 0;
-    ByteSource source;
+    std::unique_ptr<ReaderImpl> impl;
   };
 
 } // namespace bml
