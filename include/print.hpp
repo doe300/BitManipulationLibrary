@@ -1,9 +1,19 @@
 #pragma once
 
-#include <algorithm>
+#include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <variant>
+#include <vector>
 
 namespace bml {
 
@@ -70,6 +80,19 @@ public:                                                                         
     template <typename Type>
     concept IsByteNumber = !std::is_same_v<Type, char> && std::is_integral_v<Type> && sizeof(Type) == 1;
 
+    /**
+     * Marker type to make the inheriting or enclosing type non-copyable and non-movable.
+     */
+    struct ViewOnly {
+      constexpr ViewOnly() = default;
+      ViewOnly(const ViewOnly &) = delete;
+      ViewOnly(ViewOnly &&) noexcept = delete;
+      ~ViewOnly() noexcept = default;
+
+      ViewOnly &operator=(const ViewOnly &) = delete;
+      ViewOnly &operator=(ViewOnly &&) noexcept = delete;
+    };
+
     template <typename Type>
     struct PrintView {
 
@@ -94,6 +117,7 @@ public:                                                                         
       }
 
       const Type &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <typename Type>
@@ -105,6 +129,7 @@ public:                                                                         
       }
 
       const std::optional<Type> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <typename Type>
@@ -116,6 +141,7 @@ public:                                                                         
       }
 
       const std::unique_ptr<Type> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <typename... Types>
@@ -129,6 +155,7 @@ public:                                                                         
       }
 
       const std::tuple<Types...> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <typename... Types>
@@ -141,6 +168,7 @@ public:                                                                         
       }
 
       const std::variant<Types...> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <typename Type>
@@ -149,12 +177,14 @@ public:                                                                         
         requires IsPrintable<Type>
       {
         os << view.value.size() << " [";
-        for (const auto &entry : view.value)
+        for (const auto &entry : view.value) {
           os << PrintView<Type>{entry} << ", ";
+        }
         return os << ']';
       }
 
       const std::vector<Type> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <typename Type, std::size_t N>
@@ -163,12 +193,14 @@ public:                                                                         
         requires IsPrintable<Type>
       {
         os << view.value.size() << " [";
-        for (const auto &entry : view.value)
+        for (const auto &entry : view.value) {
           os << PrintView<Type>{entry} << ", ";
+        }
         return os << ']';
       }
 
       const std::array<Type, N> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <>
@@ -176,6 +208,7 @@ public:                                                                         
       friend std::ostream &operator<<(std::ostream &os, const PrintView<std::byte> &view);
 
       const std::byte &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <>
@@ -183,6 +216,7 @@ public:                                                                         
       friend std::ostream &operator<<(std::ostream &os, const PrintView<std::span<const std::byte>> &view);
 
       const std::span<const std::byte> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <>
@@ -192,6 +226,7 @@ public:                                                                         
       }
 
       const std::vector<std::byte> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <std::size_t N>
@@ -201,19 +236,20 @@ public:                                                                         
       }
 
       const std::array<std::byte, N> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
     };
 
     template <typename T>
     void printMember(std::ostream &os, std::string_view name, T &&last) {
-      os << name << " = " << printView(last);
+      os << name << " = " << printView(std::forward<T>(last));
     }
 
     template <typename T, typename... Tail>
     void printMember(std::ostream &os, std::string_view names, T &&head, Tail &&...tail) {
-      auto nameEnd = names.find(",");
+      auto nameEnd = names.find(',');
       auto nameLength = nameEnd != std::string_view::npos ? nameEnd : names.size();
-      os << names.substr(0, nameLength) << " = " << printView(head) << ", ";
-      printMember(os, names.substr(nameEnd + 2), tail...);
+      os << names.substr(0, nameLength) << " = " << printView(std::forward<T>(head)) << ", ";
+      printMember(os, names.substr(nameEnd + 2), std::forward<Tail>(tail)...);
     }
   } // namespace detail
 

@@ -2,11 +2,10 @@
 
 #include "sizes.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <memory>
-#include <optional>
 #include <span>
 
 namespace bml {
@@ -50,7 +49,7 @@ namespace bml {
     ~BitWriter() noexcept;
 
     BitWriter &operator=(const BitWriter &) = delete;
-    BitWriter &operator=(BitWriter && other) noexcept;
+    BitWriter &operator=(BitWriter &&other) noexcept;
 
     /**
      * Returns the number of bits already written.

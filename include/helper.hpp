@@ -5,10 +5,11 @@
 #include <bit>
 #include <concepts>
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <limits>
 #include <string>
 #include <type_traits>
-#include <utility>
 
 namespace bml {
 
@@ -66,8 +67,8 @@ namespace bml {
   template <std::unsigned_integral T>
   constexpr EncodedValue<best_type<2 * bits<T>() + 1>> encodeExpGolomb(T value) noexcept {
     ++value;
-    auto numBits = std::bit_width(value) - 1;
-    return {best_type<2 * bits<T>() + 1>{value}, static_cast<BitCount>(numBits * 2 + 1)};
+    auto numBits = static_cast<uint32_t>(std::bit_width(value) - 1);
+    return {best_type<2 * bits<T>() + 1>{value}, BitCount{numBits * 2U + 1U}};
   }
 
   /**

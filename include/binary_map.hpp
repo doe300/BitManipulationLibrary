@@ -6,11 +6,14 @@
 #include "sizes.hpp"
 #include "writer.hpp"
 
+#include <array>
 #include <concepts>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <type_traits>
 
 namespace bml {
 
@@ -35,95 +38,95 @@ namespace bml {
   };
 
   template <typename T>
-  [[nodiscard]] constexpr auto mapBits(BitCount numBits);
+  [[nodiscard]] constexpr auto mapBits(BitCount numBits) noexcept;
   template <typename T, BitCount NumBits>
-  [[nodiscard]] constexpr auto mapBits();
+  [[nodiscard]] constexpr auto mapBits() noexcept;
   template <typename T>
-  [[nodiscard]] constexpr auto mapBits();
+  [[nodiscard]] constexpr auto mapBits() noexcept;
   template <std::integral T>
-  [[nodiscard]] constexpr auto mapBits();
+  [[nodiscard]] constexpr auto mapBits() noexcept;
   template <Enum T>
-  [[nodiscard]] constexpr auto mapBits();
+  [[nodiscard]] constexpr auto mapBits() noexcept;
 
   template <typename T>
-  [[nodiscard]] constexpr auto mapBytes(ByteCount numBytes);
+  [[nodiscard]] constexpr auto mapBytes(ByteCount numBytes) noexcept;
   template <typename T, ByteCount NumBytes>
-  [[nodiscard]] constexpr auto mapBytes();
+  [[nodiscard]] constexpr auto mapBytes() noexcept;
   template <typename T>
-  [[nodiscard]] constexpr auto mapBytes();
+  [[nodiscard]] constexpr auto mapBytes() noexcept;
   template <std::integral T>
-  [[nodiscard]] constexpr auto mapBytes();
+  [[nodiscard]] constexpr auto mapBytes() noexcept;
   template <Enum T>
-  [[nodiscard]] constexpr auto mapBytes();
+  [[nodiscard]] constexpr auto mapBytes() noexcept;
 
   template <typename T>
-  [[nodiscard]] constexpr auto mapExpGolombBits();
+  [[nodiscard]] constexpr auto mapExpGolombBits() noexcept;
 
   template <typename T>
-  [[nodiscard]] constexpr auto mapUtf8Bytes();
+  [[nodiscard]] constexpr auto mapUtf8Bytes() noexcept;
 
   template <typename T>
-  [[nodiscard]] constexpr auto mapFibonacciBits();
+  [[nodiscard]] constexpr auto mapFibonacciBits() noexcept;
 
   template <typename T>
   [[nodiscard]] constexpr auto mapUncheckedFixedBits(T fixedValue, BitCount numBits);
   template <auto FixedValue, BitCount NumBits>
-  [[nodiscard]] constexpr auto mapUncheckedFixedBits();
+  [[nodiscard]] constexpr auto mapUncheckedFixedBits() noexcept;
 
   template <typename T, typename Ex = std::invalid_argument>
   [[nodiscard]] constexpr auto mapCheckedFixedBits(T fixedValue, BitCount numBits);
   template <auto FixedValue, BitCount NumBits, typename Ex = std::invalid_argument>
-  [[nodiscard]] constexpr auto mapCheckedFixedBits();
+  [[nodiscard]] constexpr auto mapCheckedFixedBits() noexcept;
 
   template <typename T>
   [[nodiscard]] constexpr auto mapUncheckedFixedBytes(T fixedValue, ByteCount numBytes);
   template <auto FixedValue, ByteCount NumBytes>
-  [[nodiscard]] constexpr auto mapUncheckedFixedBytes();
+  [[nodiscard]] constexpr auto mapUncheckedFixedBytes() noexcept;
   template <typename T, typename Ex = std::invalid_argument>
   [[nodiscard]] constexpr auto mapCheckedFixedBytes(T fixedValue, ByteCount numBytes);
   template <auto FixedValue, ByteCount NumBytes, typename Ex = std::invalid_argument>
-  [[nodiscard]] constexpr auto mapCheckedFixedBytes();
+  [[nodiscard]] constexpr auto mapCheckedFixedBytes() noexcept;
 
   template <typename T, MemberMapper... Mappers>
-  [[nodiscard]] constexpr auto mapCompound(Mappers... memberMappers);
+  [[nodiscard]] constexpr auto mapCompound(Mappers... memberMappers) noexcept;
 
   template <typename O, typename T, DirectMapper M>
-  [[nodiscard]] constexpr auto mapMember(T O::*member, M mapValue);
+  [[nodiscard]] constexpr auto mapMember(T O::*member, M mapValue) noexcept;
   template <auto Member, auto MapValue>
-  [[nodiscard]] constexpr auto mapMember();
+  [[nodiscard]] constexpr auto mapMember() noexcept;
   template <BitCount NumBits, typename O, typename T>
-  [[nodiscard]] constexpr auto mapMemberBits(T O::*member);
+  [[nodiscard]] constexpr auto mapMemberBits(T O::*member) noexcept;
   template <auto Member, BitCount NumBits>
-  [[nodiscard]] constexpr auto mapMemberBits();
+  [[nodiscard]] constexpr auto mapMemberBits() noexcept;
   template <typename O, std::integral T>
-  [[nodiscard]] constexpr auto mapMemberBits(T O::*member);
+  [[nodiscard]] constexpr auto mapMemberBits(T O::*member) noexcept;
   template <auto Member>
-  [[nodiscard]] constexpr auto mapMemberBits();
+  [[nodiscard]] constexpr auto mapMemberBits() noexcept;
   template <typename G, typename S, DirectMapper M>
-  [[nodiscard]] constexpr auto mapMemberProperty(G memberGetter, S memberSetter, M mapValue);
+  [[nodiscard]] constexpr auto mapMemberProperty(G memberGetter, S memberSetter, M mapValue) noexcept;
   template <auto MemberGetter, auto MemberSetter, auto MapValue>
-  [[nodiscard]] constexpr auto mapMemberProperty()
+  [[nodiscard]] constexpr auto mapMemberProperty() noexcept
     requires(!std::is_same_v<decltype(MapValue), BitCount>);
   template <BitCount NumBits, typename G, typename S>
-  [[nodiscard]] constexpr auto mapMemberProperty(G memberGetter, S memberSetter);
+  [[nodiscard]] constexpr auto mapMemberProperty(G memberGetter, S memberSetter) noexcept;
   template <auto MemberGetter, auto MemberSetter, BitCount NumBits>
-  [[nodiscard]] constexpr auto mapMemberProperty();
+  [[nodiscard]] constexpr auto mapMemberProperty() noexcept;
   template <typename G, typename S>
-  [[nodiscard]] constexpr auto mapMemberProperty(G memberGetter, S memberSetter);
+  [[nodiscard]] constexpr auto mapMemberProperty(G memberGetter, S memberSetter) noexcept;
   template <auto MemberGetter, auto MemberSetter>
-  [[nodiscard]] constexpr auto mapMemberProperty();
+  [[nodiscard]] constexpr auto mapMemberProperty() noexcept;
 
   template <typename O, DefaultConstructibleResizeableContainer T, DirectMapper M, typename S>
-  [[nodiscard]] constexpr auto mapMemberContainer(T O::*member, M mapElement, S O::*sizeMember);
+  [[nodiscard]] constexpr auto mapMemberContainer(T O::*member, M mapElement, S O::*sizeMember) noexcept;
   template <auto Member, auto MapValue, auto SizeMember>
-  [[nodiscard]] constexpr auto mapMemberContainer();
+  [[nodiscard]] constexpr auto mapMemberContainer() noexcept;
 
   template <typename O, typename T, DirectMapper M, std::size_t N>
-  [[nodiscard]] constexpr auto mapMemberArray(std::array<T, N> O::*member, M mapElement);
+  [[nodiscard]] constexpr auto mapMemberArray(std::array<T, N> O::*member, M mapElement) noexcept;
   template <auto Member, auto MapValue>
-  [[nodiscard]] constexpr auto mapMemberArray();
+  [[nodiscard]] constexpr auto mapMemberArray() noexcept;
 
-  [[nodiscard]] constexpr auto assertByteAligned();
+  [[nodiscard]] constexpr auto assertByteAligned() noexcept;
 
   namespace detail {
 
@@ -148,8 +151,8 @@ namespace bml {
       }
 
       template <auto Other>
-      friend constexpr CompileTimeValueHolder<Value + Other> operator+(CompileTimeValueHolder<Value>,
-                                                                       CompileTimeValueHolder<Other>) noexcept {
+      friend constexpr CompileTimeValueHolder<Value + Other>
+      operator+(CompileTimeValueHolder<Value> /* unused */, CompileTimeValueHolder<Other> /* unused */) noexcept {
         return CompileTimeValueHolder<Value + Other>{};
       }
     };
@@ -178,12 +181,12 @@ namespace bml {
 
       template <auto Value>
       friend constexpr RunTimeValueHolder operator+(const RunTimeValueHolder &one,
-                                                    CompileTimeValueHolder<Value>) noexcept {
+                                                    CompileTimeValueHolder<Value> /* unused */) noexcept {
         return RunTimeValueHolder{one.storedValue + Value};
       }
 
       template <auto Value>
-      friend constexpr RunTimeValueHolder operator+(CompileTimeValueHolder<Value>,
+      friend constexpr RunTimeValueHolder operator+(CompileTimeValueHolder<Value> /* unused */,
                                                     const RunTimeValueHolder &other) noexcept {
         return RunTimeValueHolder{Value + other.storedValue};
       }
@@ -195,12 +198,12 @@ namespace bml {
     struct DynamicValueHolder {
 
       template <typename T>
-      friend constexpr DynamicValueHolder operator+(DynamicValueHolder, T) noexcept {
+      friend constexpr DynamicValueHolder operator+(DynamicValueHolder /* unused */, T /* unused */) noexcept {
         return DynamicValueHolder{};
       }
 
       template <typename T>
-      friend constexpr DynamicValueHolder operator+(T, DynamicValueHolder) noexcept
+      friend constexpr DynamicValueHolder operator+(T /* unused */, DynamicValueHolder /* unused */) noexcept
         requires(!std::is_same_v<T, DynamicValueHolder>)
       {
         return DynamicValueHolder{};
@@ -208,7 +211,7 @@ namespace bml {
     };
 
     template <typename Mapper>
-    constexpr auto getFixedSize(const Mapper &) noexcept {
+    constexpr auto getFixedSize(const Mapper & /* unused */) noexcept {
       return DynamicValueHolder{};
     }
 
@@ -627,7 +630,7 @@ namespace bml {
    * Maps the given number of bits as value of the given elementary type.
    */
   template <typename T>
-  constexpr auto mapBits(BitCount numBits) {
+  constexpr auto mapBits(BitCount numBits) noexcept {
     return detail::MapTypedElementary<T, detail::RunTimeValueHolder<BitCount>>{numBits};
   }
 
@@ -635,7 +638,7 @@ namespace bml {
    * Maps the given number of bits as value of the given elementary type.
    */
   template <typename T, BitCount NumBits>
-  constexpr auto mapBits() {
+  constexpr auto mapBits() noexcept {
     return detail::MapTypedElementary<T, detail::CompileTimeValueHolder<NumBits>>{};
   }
 
@@ -645,7 +648,7 @@ namespace bml {
    * This mapper reads/writes the number of bits matching the elementary type size.
    */
   template <std::integral T>
-  constexpr auto mapBits() {
+  constexpr auto mapBits() noexcept {
     constexpr BitCount NUM_BITS{detail::TypeBits<T>::value};
     return mapBits<T, NUM_BITS>();
   }
@@ -656,7 +659,7 @@ namespace bml {
    * This mapper reads/writes the number of bits matching the enumeration type size.
    */
   template <Enum T>
-  constexpr auto mapBits() {
+  constexpr auto mapBits() noexcept {
     constexpr BitCount NUM_BITS{detail::TypeBits<T>::value};
     return mapBits<T, NUM_BITS>();
   }
@@ -665,7 +668,7 @@ namespace bml {
    * Maps the given number of aligned bytes as value of the given elementary type.
    */
   template <typename T>
-  constexpr auto mapBytes(ByteCount numBytes) {
+  constexpr auto mapBytes(ByteCount numBytes) noexcept {
     return detail::MapTypedElementary<T, detail::RunTimeValueHolder<ByteCount>, true>{numBytes};
   }
 
@@ -673,7 +676,7 @@ namespace bml {
    * Maps the given number of aligned bytes as value of the given elementary type.
    */
   template <typename T, ByteCount NumBytes>
-  constexpr auto mapBytes() {
+  constexpr auto mapBytes() noexcept {
     return detail::MapTypedElementary<T, detail::CompileTimeValueHolder<NumBytes>, true>{};
   }
 
@@ -683,7 +686,7 @@ namespace bml {
    * This mapper reads/writes the number of aligned bytes matching the elementary type size.
    */
   template <std::integral T>
-  constexpr auto mapBytes() {
+  constexpr auto mapBytes() noexcept {
     constexpr ByteCount NUM_BYTES{sizeof(T)};
     return mapBytes<T, NUM_BYTES>();
   }
@@ -694,7 +697,7 @@ namespace bml {
    * This mapper reads/writes the number of aligned bytes matching the enumeration type size.
    */
   template <Enum T>
-  constexpr auto mapBytes() {
+  constexpr auto mapBytes() noexcept {
     constexpr ByteCount NUM_BYTES{sizeof(std::underlying_type_t<T>)};
     return mapBytes<T, NUM_BYTES>();
   }
@@ -703,7 +706,7 @@ namespace bml {
    * Maps the given type as Exponentional-Golomb encoded value.
    */
   template <typename T>
-  constexpr auto mapExpGolombBits() {
+  constexpr auto mapExpGolombBits() noexcept {
     return detail::MapTyped{detail::DynamicValueHolder{},
                             [](BitReader &reader) { return MapElementary<T>::readExpGolomb(reader); },
                             [](BitWriter &writer, const T &value) { MapElementary<T>::writeExpGolomb(writer, value); }};
@@ -715,7 +718,7 @@ namespace bml {
    * This mapper requires the input/output byte stream to be byte aligned.
    */
   template <typename T = char32_t>
-  constexpr auto mapUtf8Bytes() {
+  constexpr auto mapUtf8Bytes() noexcept {
     return detail::MapTyped{
         detail::DynamicValueHolder{}, [](BitReader &reader) { return static_cast<T>(reader.readUtf8CodePoint()); },
         [](BitWriter &writer, const T &value) { writer.writeUtf8CodePoint(static_cast<uint32_t>(value)); }};
@@ -725,7 +728,7 @@ namespace bml {
    * Maps the given type as (Nega-)Fibonacci encoded value.
    */
   template <typename T>
-  constexpr auto mapFibonacciBits() {
+  constexpr auto mapFibonacciBits() noexcept {
     return detail::MapTyped{detail::DynamicValueHolder{},
                             [](BitReader &reader) { return MapElementary<T>::readFibonacci(reader); },
                             [](BitWriter &writer, const T &value) { MapElementary<T>::writeFibonacci(writer, value); }};
@@ -744,7 +747,7 @@ namespace bml {
    * Maps the given number of bits as fixed value of the given type without error-checking.
    */
   template <auto FixedValue, BitCount NumBits>
-  constexpr auto mapUncheckedFixedBits() {
+  constexpr auto mapUncheckedFixedBits() noexcept {
     return detail::MapFixedBits<detail::CompileTimeValueHolder<FixedValue>, detail::CompileTimeValueHolder<NumBits>,
                                 false, false>{};
   }
@@ -762,7 +765,7 @@ namespace bml {
    * Maps the given number of bits as fixed value of the given type with error-checking.
    */
   template <auto FixedValue, BitCount NumBits, typename Ex>
-  constexpr auto mapCheckedFixedBits() {
+  constexpr auto mapCheckedFixedBits() noexcept {
     return detail::MapFixedBits<detail::CompileTimeValueHolder<FixedValue>, detail::CompileTimeValueHolder<NumBits>,
                                 true, false, Ex>{};
   }
@@ -780,7 +783,7 @@ namespace bml {
    * Maps the given number of aligned bytes as fixed value of the given type without error-checking.
    */
   template <auto FixedValue, ByteCount NumBytes>
-  constexpr auto mapUncheckedFixedBytes() {
+  constexpr auto mapUncheckedFixedBytes() noexcept {
     return detail::MapFixedBits<detail::CompileTimeValueHolder<FixedValue>, detail::CompileTimeValueHolder<NumBytes>,
                                 false, true>{};
   }
@@ -798,7 +801,7 @@ namespace bml {
    * Maps the given number of aligned bytes as fixed value of the given type with error-checking.
    */
   template <auto FixedValue, ByteCount NumBytes, typename Ex>
-  constexpr auto mapCheckedFixedBytes() {
+  constexpr auto mapCheckedFixedBytes() noexcept {
     return detail::MapFixedBits<detail::CompileTimeValueHolder<FixedValue>, detail::CompileTimeValueHolder<NumBytes>,
                                 true, true, Ex>{};
   }
@@ -807,7 +810,7 @@ namespace bml {
    * Maps the given compound type by applying all given mappers in-order.
    */
   template <typename T, MemberMapper... Mappers>
-  constexpr auto mapCompound(Mappers... memberMappers) {
+  constexpr auto mapCompound(Mappers... memberMappers) noexcept {
     return detail::MapTyped{(detail::getFixedSize(memberMappers) + ...),
                             [... mappers = std::forward<Mappers>(memberMappers)](BitReader &reader) {
                               T obj{};
@@ -823,7 +826,7 @@ namespace bml {
    * Maps the given member by applying the given simple value mapper and assigning the member object.
    */
   template <typename O, typename T, DirectMapper M>
-  constexpr auto mapMember(T O::*member, M mapValue) {
+  constexpr auto mapMember(T O::*member, M mapValue) noexcept {
     return detail::MapSimpleMember<detail::RunTimeValueHolder<T O::*>, detail::RunTimeValueHolder<M>>{{member},
                                                                                                       {mapValue}};
   }
@@ -832,7 +835,7 @@ namespace bml {
    * Maps the given member by applying the given simple value mapper and assigning the member object.
    */
   template <auto Member, auto MapValue>
-  constexpr auto mapMember() {
+  constexpr auto mapMember() noexcept {
     return detail::MapSimpleMember<detail::CompileTimeValueHolder<Member>, detail::CompileTimeValueHolder<MapValue>>{};
   }
 
@@ -840,7 +843,7 @@ namespace bml {
    * Maps the given member by applying the matching elementary value mapper and assigning the member object.
    */
   template <BitCount NumBits, typename O, typename T>
-  constexpr auto mapMemberBits(T O::*member) {
+  constexpr auto mapMemberBits(T O::*member) noexcept {
     static_assert(BitCount{NumBits} <= ByteCount{sizeof(T)});
     if constexpr (std::is_integral_v<T>) {
       static_assert(NumBits <= BitCount{detail::TypeBits<T>::value});
@@ -854,7 +857,7 @@ namespace bml {
    * the member object.
    */
   template <auto Member, BitCount NumBits>
-  constexpr auto mapMemberBits() {
+  constexpr auto mapMemberBits() noexcept {
     using T = detail::MemberType<decltype(Member)>;
     static_assert(BitCount{NumBits} <= ByteCount{sizeof(T)});
     if constexpr (std::is_integral_v<T>) {
@@ -867,7 +870,7 @@ namespace bml {
    * Maps the given integral member by applying the matching elementary value mapper and assigning the member object.
    */
   template <typename O, std::integral T>
-  constexpr auto mapMemberBits(T O::*member) {
+  constexpr auto mapMemberBits(T O::*member) noexcept {
     constexpr BitCount NUM_BITS{detail::TypeBits<T>::value};
     return mapMemberBits<NUM_BITS>(member);
   }
@@ -876,7 +879,7 @@ namespace bml {
    * Maps the given enumeration member by applying the matching elementary value mapper and assigning the member object.
    */
   template <auto Member>
-  constexpr auto mapMemberBits() {
+  constexpr auto mapMemberBits() noexcept {
     static_assert(std::integral<detail::MemberType<decltype(Member)>> ||
                   std::is_enum_v<detail::MemberType<decltype(Member)>>);
     constexpr BitCount NUM_BITS{detail::TypeBits<detail::MemberType<decltype(Member)>>::value};
@@ -887,7 +890,7 @@ namespace bml {
    * Maps the given member by applying the given simple value mapper and getter/setter functions.
    */
   template <typename G, typename S, DirectMapper M>
-  constexpr auto mapMemberProperty(G memberGetter, S memberSetter, M mapValue) {
+  constexpr auto mapMemberProperty(G memberGetter, S memberSetter, M mapValue) noexcept {
     return detail::MapMemberProperty{detail::RunTimeValueHolder{memberGetter}, detail::RunTimeValueHolder{memberSetter},
                                      detail::RunTimeValueHolder{mapValue}};
   }
@@ -896,7 +899,7 @@ namespace bml {
    * Maps the given member by applying the given simple value mapper and getter/setter functions.
    */
   template <auto MemberGetter, auto MemberSetter, auto MapValue>
-  constexpr auto mapMemberProperty()
+  constexpr auto mapMemberProperty() noexcept
     requires(!std::is_same_v<decltype(MapValue), BitCount>)
   {
     return detail::MapMemberProperty{detail::CompileTimeValueHolder<MemberGetter>{},
@@ -909,7 +912,7 @@ namespace bml {
    * getter/setter functions.
    */
   template <BitCount NumBits, typename G, typename S>
-  constexpr auto mapMemberProperty(G memberGetter, S memberSetter) {
+  constexpr auto mapMemberProperty(G memberGetter, S memberSetter) noexcept {
     using Type = detail::MemberType<G>;
     static_assert(BitCount{NumBits} <= ByteCount{sizeof(Type)});
     if constexpr (std::is_integral_v<Type>) {
@@ -924,7 +927,7 @@ namespace bml {
    * getter/setter functions.
    */
   template <auto MemberGetter, auto MemberSetter, BitCount NumBits>
-  constexpr auto mapMemberProperty() {
+  constexpr auto mapMemberProperty() noexcept {
     using Type = detail::MemberType<decltype(MemberGetter)>;
     static_assert(BitCount{NumBits} <= ByteCount{sizeof(Type)});
     if constexpr (std::is_integral_v<Type>) {
@@ -939,7 +942,7 @@ namespace bml {
    * Maps the given integral member by applying the elementary value mapper and using the given getter/setter functions.
    */
   template <typename G, typename S>
-  constexpr auto mapMemberProperty(G memberGetter, S memberSetter)
+  constexpr auto mapMemberProperty(G memberGetter, S memberSetter) noexcept
     requires(std::integral<detail::MemberType<G>>)
   {
     constexpr BitCount NUM_BITS{detail::TypeBits<detail::MemberType<G>>::value};
@@ -950,7 +953,7 @@ namespace bml {
    * Maps the given member by applying the deduced value mapper and using the given getter/setter functions.
    */
   template <auto MemberGetter, auto MemberSetter>
-  constexpr auto mapMemberProperty() {
+  constexpr auto mapMemberProperty() noexcept {
     constexpr BitCount NUM_BITS{detail::TypeBits<detail::MemberType<decltype(MemberGetter)>>::value};
     return mapMemberProperty<MemberGetter, MemberSetter, NUM_BITS>();
   }
@@ -960,7 +963,7 @@ namespace bml {
    * mappers.
    */
   template <typename O, DefaultConstructibleResizeableContainer T, DirectMapper M, typename S>
-  constexpr auto mapMemberContainer(T O::*member, M mapElement, S O::*sizeMember) {
+  constexpr auto mapMemberContainer(T O::*member, M mapElement, S O::*sizeMember) noexcept {
     return detail::MapMemberResizeableContainer{detail::RunTimeValueHolder<T O::*>{member},
                                                 detail::RunTimeValueHolder<M>{mapElement},
                                                 detail::RunTimeValueHolder<S O::*>{sizeMember}};
@@ -970,7 +973,7 @@ namespace bml {
    * Maps the given member container by using the given simple size and element mappers.
    */
   template <auto Member, auto MapValue, auto SizeMember>
-  constexpr auto mapMemberContainer() {
+  constexpr auto mapMemberContainer() noexcept {
     return detail::MapMemberResizeableContainer<detail::CompileTimeValueHolder<Member>,
                                                 detail::CompileTimeValueHolder<MapValue>,
                                                 detail::CompileTimeValueHolder<SizeMember>>{};
@@ -980,7 +983,7 @@ namespace bml {
    * Maps the given array member container by using the given simple element mapper.
    */
   template <typename O, typename T, DirectMapper M, std::size_t N>
-  constexpr auto mapMemberArray(std::array<T, N> O::*member, M mapElement) {
+  constexpr auto mapMemberArray(std::array<T, N> O::*member, M mapElement) noexcept {
     return detail::MapMemberArray{detail::RunTimeValueHolder<std::array<T, N> O::*>{member},
                                   detail::RunTimeValueHolder<M>{mapElement}};
   }
@@ -989,14 +992,14 @@ namespace bml {
    * Maps the given array member container by using the given simple element mapper.
    */
   template <auto Member, auto MapValue>
-  constexpr auto mapMemberArray() {
+  constexpr auto mapMemberArray() noexcept {
     return detail::MapMemberArray<detail::CompileTimeValueHolder<Member>, detail::CompileTimeValueHolder<MapValue>>{};
   }
 
   /**
    * "Mapper" which does not read or write anything, just asserts that the current read/write position is byte-aligned.
    */
-  constexpr auto assertByteAligned() {
+  constexpr auto assertByteAligned() noexcept {
     return detail::MapSimple{[](BitReader &reader) { reader.assertAlignment(1_bytes); },
                              [](BitWriter &writer) { writer.assertAlignment(1_bytes); },
                              detail::CompileTimeValueHolder<0_bits>{}};

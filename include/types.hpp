@@ -6,15 +6,23 @@
 #include "io.hpp"
 #include "print.hpp"
 #include "reader.hpp"
+#include "sizes.hpp"
 #include "writer.hpp"
 
 #include <algorithm>
 #include <array>
-#include <compare>
-#include <memory>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <numeric>
 #include <optional>
+#include <span>
 #include <stdexcept>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -53,7 +61,7 @@ namespace bml {
     }
 
   private:
-    bool value;
+    bool value = false;
   };
 
   /**
@@ -101,22 +109,24 @@ namespace bml {
       requires std::is_enum_v<V>
     {
       auto valueBits = static_cast<std::underlying_type_t<V>>(val);
-      if ((valueBits & BitCount{N}.mask()) != valueBits)
+      if ((valueBits & BitCount{N}.mask()) != valueBits) {
         throw std::invalid_argument("Value '" + toHexString(valueBits) + "' does not fit into a " + std::to_string(N) +
                                     "-Bit type");
+      }
       return val;
     }
 
     template <typename V = value_type>
     V checkValue(V val) {
-      if ((val & BitCount{N}.mask()) != val)
+      if ((val & BitCount{N}.mask()) != val) {
         throw std::invalid_argument("Value '" + toHexString(val) + "' does not fit into a " + std::to_string(N) +
                                     "-Bit type");
+      }
       return val;
     }
 
   protected:
-    value_type value;
+    value_type value = {};
   };
 
   /**
@@ -174,7 +184,7 @@ namespace bml {
     void read(BitReader &reader) { checkValue(static_cast<value_type>(reader.read<best_type<N>>(BitCount{N}))); }
     void write(BitWriter &writer) const { writer.write(static_cast<best_type<N>>(Value), BitCount{N}); }
 
-    friend std::ostream &operator<<(std::ostream &os, const FixedBits &) {
+    friend std::ostream &operator<<(std::ostream &os, const FixedBits & /* unused */) {
       writeBits(os, static_cast<value_type>(Value), BitCount{N});
       return os;
     }
@@ -183,9 +193,10 @@ namespace bml {
 
   protected:
     void checkValue(value_type value) {
-      if (!IgnoreInvalidValue && !matches(value))
+      if (!IgnoreInvalidValue && !matches(value)) {
         Debug::error("Value '" + toHexString(static_cast<best_type<N>>(value)) + "' does not match the fixed value '" +
                      toHexString(static_cast<best_type<N>>(Value)) + "'");
+      }
     }
   };
 
@@ -274,7 +285,7 @@ namespace bml {
     friend std::ostream &operator<<(std::ostream &os, const ExpGolombBits &bits) { return os << bits.value; }
 
   private:
-    value_type value;
+    value_type value = {};
   };
 
   /**
@@ -313,7 +324,7 @@ namespace bml {
     friend std::ostream &operator<<(std::ostream &os, const SignedExpGolombBits &bits) { return os << bits.value; }
 
   private:
-    value_type value;
+    value_type value = {};
   };
 
   /**
@@ -332,7 +343,7 @@ namespace bml {
     friend std::ostream &operator<<(std::ostream &os, const UnicodeCodePoint &codePoint);
 
   protected:
-    value_type value;
+    value_type value = {};
   };
 
   /**
@@ -439,7 +450,7 @@ namespace bml {
     friend std::ostream &operator<<(std::ostream &os, const FibonacciBits &bits) { return os << bits.value; }
 
   private:
-    value_type value;
+    value_type value = {};
   };
 
   /**
@@ -483,7 +494,7 @@ namespace bml {
     friend std::ostream &operator<<(std::ostream &os, const NegaFibonacciBits &bits) { return os << bits.value; }
 
   private:
-    value_type value;
+    value_type value = {};
   };
 
   /**
@@ -515,10 +526,10 @@ namespace bml {
     const value_type *operator->() const noexcept { return &value; }
     const value_type &operator*() const noexcept { return value; }
 
-    void set(value_type val) { value = val; }
+    void set(value_type val) { value = std::move(val); }
 
     OptionalBits &operator=(value_type val) {
-      value = val;
+      value = std::move(val);
       return *this;
     }
 
@@ -560,10 +571,11 @@ namespace bml {
     friend std::ostream &operator<<(std::ostream &os, const OptionalBits &bits)
       requires Printable<T>
     {
-      if (bits.value)
+      if (bits.value) {
         os << printView(*bits.value);
-      else
+      } else {
         os << "(empty)";
+      }
       return os;
     }
 
@@ -599,10 +611,10 @@ namespace bml {
     const value_type *operator->() const noexcept { return &value; }
     const value_type &operator*() const noexcept { return value; }
 
-    void set(value_type val) { value = val; }
+    void set(value_type val) { value = std::move(val); }
 
     BitList &operator=(value_type val) {
-      value = val;
+      value = std::move(val);
       return *this;
     }
 
@@ -622,8 +634,9 @@ namespace bml {
       requires Writeable<T>
     {
       writer.write(value.size(), BitCount{LengthBits});
-      for (const auto &entry : value)
+      for (const auto &entry : value) {
         bml::write(writer, entry);
+      }
     }
 
     static void skip(BitReader &reader)
@@ -649,8 +662,9 @@ namespace bml {
       requires Printable<T>
     {
       os << bits.value.size() << " [";
-      for (auto &entry : bits.value)
+      for (auto &entry : bits.value) {
         os << printView(entry) << ", ";
+      }
       return os << ']';
     }
 
@@ -705,7 +719,7 @@ namespace bml {
     }
 
   private:
-    value_type value;
+    value_type value = {};
   };
 
   /**
@@ -727,10 +741,10 @@ namespace bml {
     const value_type *operator->() const noexcept { return &value; }
     const value_type &operator*() const noexcept { return value; }
 
-    void set(value_type val) { value = val; }
+    void set(value_type val) { value = std::move(val); }
 
     PrefixString &operator=(value_type val) {
-      value = val;
+      value = std::move(val);
       return *this;
     }
 
@@ -746,8 +760,9 @@ namespace bml {
 
     void write(BitWriter &writer) const {
       writer.write(value.size(), BitCount{LengthBits});
-      for (const auto &entry : value)
+      for (const auto &entry : value) {
         bml::write(writer, entry);
+      }
     }
 
     static void skip(BitReader &reader) {
@@ -798,10 +813,10 @@ namespace bml {
     const value_type *operator->() const noexcept { return &value; }
     const value_type &operator*() const noexcept { return value; }
 
-    void set(value_type val) { value = val; }
+    void set(value_type val) { value = std::move(val); }
 
     SizedList &operator=(value_type val) {
-      value = val;
+      value = std::move(val);
       return *this;
     }
 
@@ -841,8 +856,9 @@ namespace bml {
       requires Printable<T>
     {
       os << list.value.size() << " [";
-      for (auto &entry : list.value)
+      for (auto &entry : list.value) {
         os << printView(entry) << ", ";
+      }
       return os << ']';
     }
 
@@ -907,7 +923,7 @@ namespace bml {
     }
 
   private:
-    value_type value;
+    value_type value = {};
   };
 
   /**
@@ -939,10 +955,10 @@ namespace bml {
     const value_type *operator->() const noexcept { return &value; }
     const value_type &operator*() const noexcept { return value; }
 
-    void set(value_type val) { value = val; }
+    void set(value_type val) { value = std::move(val); }
 
     FixedSizeVariant &operator=(const value_type &val) {
-      value = val;
+      value = std::move(val);
       return *this;
     }
 
@@ -953,7 +969,7 @@ namespace bml {
 
     template <typename U>
     FixedSizeVariant &operator=(U &&val) {
-      value = std::move(val);
+      value = std::forward<U>(val);
       return *this;
     }
 
@@ -1021,15 +1037,16 @@ namespace bml {
       tmp.write(writer);
     }
 
-    friend std::ostream &operator<<(std::ostream &os, const AlignmentBits &) {
+    friend std::ostream &operator<<(std::ostream &os, const AlignmentBits & /* unused */) {
       return os << "(fill to " << Alignment << " bits with " << (Value ? '1' : '0') << ")";
     }
 
   private:
     void checkValue(bool value) {
-      if (!IgnoreInvalidValue && value != Value)
+      if (!IgnoreInvalidValue && value != Value) {
         Debug::error("Value '" + toHexString(value) + "' does not match the alignment padding value '" +
                      toHexString(Value) + "'");
+      }
     }
   };
 } // namespace bml

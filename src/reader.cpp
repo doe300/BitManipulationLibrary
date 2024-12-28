@@ -4,6 +4,7 @@
 #include "common.hpp"
 #include "helper.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace bml {
@@ -72,7 +73,7 @@ namespace bml {
 
       // 1. Read the remainder of the cache
       if (cacheSize) {
-        BitCount numBitsToRead = std::min(numBits - numBitsSkipped, cacheSize);
+        const BitCount numBitsToRead = std::min(numBits - numBitsSkipped, cacheSize);
         read(numBitsToRead);
         numBitsSkipped += numBitsToRead;
       }
@@ -88,7 +89,7 @@ namespace bml {
 
       // 3. Skip any remaining bits
       while (numBitsSkipped < numBits) {
-        BitCount numBitsToRead = std::min(numBits - numBitsSkipped, CACHE_SIZE);
+        const BitCount numBitsToRead = std::min(numBits - numBitsSkipped, CACHE_SIZE);
         read(numBitsToRead);
         numBitsSkipped += numBitsToRead;
       }
@@ -106,7 +107,7 @@ namespace bml {
         }
         makeAvailable(BYTE_SIZE);
       }
-      BitCount numRemainingBits{static_cast<uint32_t>(std::countl_zero(cache))};
+      const BitCount numRemainingBits{static_cast<uint32_t>(std::countl_zero(cache))};
       read(numRemainingBits);
       numBits += numRemainingBits;
       return numBits;
@@ -160,8 +161,8 @@ namespace bml {
     [[nodiscard]] virtual bool skipSourceBytes(ByteCount numBytes) = 0;
 
   private:
-    ByteCount sourceBytesRead{};
-    BitCount cacheSize{};
+    ByteCount sourceBytesRead;
+    BitCount cacheSize;
     /** is always left-adjusted to read the highest bits first */
     std::uintmax_t cache = 0;
   };
@@ -194,7 +195,7 @@ namespace bml {
   };
 
   struct ByteReadRangeImpl final : BitReader::ReaderImpl {
-    explicit ByteReadRangeImpl(BitReader::ByteRange &&range) : sourceRange(std::move(range)) {}
+    explicit ByteReadRangeImpl(BitReader::ByteRange range) : sourceRange(range) {}
 
     bool extractSourceBytes(std::span<std::byte> outBytes) override {
       if (outBytes.size() > sourceRange.size()) {
@@ -218,7 +219,7 @@ namespace bml {
 
   BitReader::BitReader() noexcept = default;
   BitReader::BitReader(ByteGenerator &&generator) : impl(std::make_unique<ByteGeneratorImpl>(std::move(generator))) {}
-  BitReader::BitReader(ByteRange range) : impl(std::make_unique<ByteReadRangeImpl>(std::move(range))) {}
+  BitReader::BitReader(ByteRange range) : impl(std::make_unique<ByteReadRangeImpl>(range)) {}
   BitReader::~BitReader() noexcept = default;
 
   BitReader &BitReader::operator=(BitReader &&other) noexcept {
@@ -275,24 +276,24 @@ namespace bml {
 
   char32_t BitReader::readUtf8CodePoint() {
     auto b = peek(1_bytes);
-    if ((b & 0x80) == 0x00) {
+    if ((b & 0x80U) == 0x00U) {
       // simple 7-bit ASCII
       return read<uint32_t>(1_bytes);
-    } else if ((b & 0xE0) == 0xC0) {
-      uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x1F) << 6U;
-      return codePoint | (read<uint32_t>(1_bytes) & 0x3F);
-    } else if ((b & 0xF0) == 0xE0) {
-      uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x0F) << 12;
-      codePoint |= (read<uint32_t>(1_bytes) & 0x3F) << 6;
-      return codePoint | (read<uint32_t>(1_bytes) & 0x3F);
-    } else if ((b & 0xF8) == 0xF0) {
-      uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x07) << 18;
-      codePoint |= (read<uint32_t>(1_bytes) & 0x3F) << 12;
-      codePoint |= (read<uint32_t>(1_bytes) & 0x3F) << 6;
-      return codePoint | (read<uint32_t>(1_bytes) & 0x3F);
-    } else if ((b & 0xC0) == 0x80) {
+    } else if ((b & 0xE0U) == 0xC0U) {
+      const uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x1FU) << 6U;
+      return codePoint | (read<uint32_t>(1_bytes) & 0x3FU);
+    } else if ((b & 0xF0U) == 0xE0U) {
+      uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x0FU) << 12U;
+      codePoint |= (read<uint32_t>(1_bytes) & 0x3FU) << 6U;
+      return codePoint | (read<uint32_t>(1_bytes) & 0x3FU);
+    } else if ((b & 0xF8U) == 0xF0U) {
+      uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x07U) << 18U;
+      codePoint |= (read<uint32_t>(1_bytes) & 0x3FU) << 12U;
+      codePoint |= (read<uint32_t>(1_bytes) & 0x3FU) << 6U;
+      return codePoint | (read<uint32_t>(1_bytes) & 0x3FU);
+    } else if ((b & 0xC0U) == 0x80U) {
       // start within the previous UTF-8 character, cannot decode, so skip remainder
-      while ((peek(1_bytes) & 0xC0) == 0x80) {
+      while ((peek(1_bytes) & 0xC0U) == 0x80U) {
         readByte();
       }
     }
@@ -301,14 +302,14 @@ namespace bml {
 
   char32_t BitReader::readUtf16CodePoint() {
     auto b = peek(2_bytes);
-    if (b < 0xD800 || b >= 0xE000) {
+    if (b < 0xD800U || b >= 0xE000U) {
       return read<uint32_t>(2_bytes);
-    } else if ((b & 0xDC00) == 0xD800) {
-      uint32_t codePoint = (read<uint32_t>(2_bytes) & 0x3FF) << 10;
-      return 0x10000U | codePoint | (read<uint32_t>(2_bytes) & 0x3FF);
-    } else if ((b & 0xDC00) == 0xDC00) {
+    } else if ((b & 0xDC00U) == 0xD800U) {
+      const uint32_t codePoint = (read<uint32_t>(2_bytes) & 0x3FFU) << 10U;
+      return 0x10000U | codePoint | (read<uint32_t>(2_bytes) & 0x3FFU);
+    } else if ((b & 0xDC00U) == 0xDC00U) {
       // start within the previous UTF-16 character, cannot decode, so skip remainder
-      while ((peek(2_bytes) & 0xDC00) == 0xDC00) {
+      while ((peek(2_bytes) & 0xDC00U) == 0xDC00U) {
         read(2_bytes);
       }
     }

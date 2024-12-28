@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sizes.hpp"
+#include "types.hpp"
 
 #include <algorithm>
 #include <array>

@@ -106,7 +106,7 @@ struct MapCompressedString {
 
   std::string operator()(bml::BitReader &reader) const {
     std::string value{};
-    uint8_t code;
+    uint8_t code = 0;
     while ((code = mapCode(reader)) < 63U) {
       if (code == 62U) {
         value.push_back(' ');

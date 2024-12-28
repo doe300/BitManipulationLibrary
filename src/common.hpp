@@ -2,7 +2,6 @@
 
 #include "sizes.hpp"
 
-#include <compare>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -14,15 +13,14 @@ namespace bml {
 
   struct Cache {
     // Value is left-adjusted
-    std::uintmax_t value;
-    BitCount size;
+    std::uintmax_t value{};
+    BitCount size{};
 
     constexpr auto operator<=>(const Cache &) const noexcept = default;
   };
 
   template <typename ByteProducer = bool (*)(std::byte &), typename ErrorHandler = void (*)()>
-  constexpr ByteCount fillCache(Cache &cache, BitCount numBits, ByteProducer &&produceNextByte,
-                                ErrorHandler &&handleEos) {
+  constexpr ByteCount fillCache(Cache &cache, BitCount numBits, ByteProducer produceNextByte, ErrorHandler handleEos) {
     auto bytesRead = 0_bytes;
     if (numBits > CACHE_SIZE) [[unlikely]] {
       throw std::out_of_range("Cannot read more bits than fit into uintmax_t");
@@ -44,8 +42,9 @@ namespace bml {
   }
 
   constexpr std::uintmax_t readFromCache(Cache &cache, BitCount numBits) {
-    if (!numBits)
+    if (!numBits) {
       return 0;
+    }
     auto result = (cache.value >> (CACHE_SIZE - numBits)) & numBits.mask();
     if (numBits == CACHE_SIZE) {
       cache.size = 0_bits;
@@ -58,7 +57,7 @@ namespace bml {
   }
 
   template <typename ByteConsumer = bool (*)(std::byte), typename ErrorHandler = void (*)()>
-  constexpr ByteCount flushFullCacheBytes(Cache &cache, ByteConsumer &&consumeNextByte, ErrorHandler &&handleEos) {
+  constexpr ByteCount flushFullCacheBytes(Cache &cache, ByteConsumer consumeNextByte, ErrorHandler handleEos) {
     auto bytesWritten = 0_bytes;
     while (cache.size >= 1_bytes) {
       // flush highest cache byte
@@ -75,21 +74,22 @@ namespace bml {
   }
 
   constexpr std::u8string toUtf8String(char32_t codePoint) noexcept {
+    auto code = std::bit_cast<uint32_t>(codePoint);
     std::u8string outUtf8String{};
-    if (codePoint < 0x80) {
-      outUtf8String.push_back(static_cast<char8_t>(codePoint & 0x7F));
-    } else if (codePoint < 0x800) {
-      outUtf8String.push_back(static_cast<char8_t>(0xC0 + ((codePoint >> 6) & 0x1F)));
-      outUtf8String.push_back(static_cast<char8_t>(0x80 + (codePoint & 0x3F)));
-    } else if (codePoint < 0x10000) {
-      outUtf8String.push_back(static_cast<char8_t>(0xE0 + ((codePoint >> 12) & 0x0F)));
-      outUtf8String.push_back(static_cast<char8_t>(0x80 + ((codePoint >> 6) & 0x3F)));
-      outUtf8String.push_back(static_cast<char8_t>(0x80 + (codePoint & 0x3F)));
-    } else if (codePoint < 0x110000) {
-      outUtf8String.push_back(static_cast<char8_t>(0xF0 + ((codePoint >> 18) & 0x07)));
-      outUtf8String.push_back(static_cast<char8_t>(0x80 + ((codePoint >> 12) & 0x3F)));
-      outUtf8String.push_back(static_cast<char8_t>(0x80 + ((codePoint >> 6) & 0x3F)));
-      outUtf8String.push_back(static_cast<char8_t>(0x80 + (codePoint & 0x3F)));
+    if (code < 0x80U) {
+      outUtf8String.push_back(static_cast<char8_t>(code & 0x7FU));
+    } else if (code < 0x800U) {
+      outUtf8String.push_back(static_cast<char8_t>(0xC0U + ((code >> 6U) & 0x1FU)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80U + (code & 0x3FU)));
+    } else if (code < 0x10000U) {
+      outUtf8String.push_back(static_cast<char8_t>(0xE0U + ((code >> 12U) & 0x0FU)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80U + ((code >> 6U) & 0x3FU)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80U + (code & 0x3FU)));
+    } else if (code < 0x110000U) {
+      outUtf8String.push_back(static_cast<char8_t>(0xF0U + ((code >> 18U) & 0x07U)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80U + ((code >> 12U) & 0x3FU)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80U + ((code >> 6U) & 0x3FU)));
+      outUtf8String.push_back(static_cast<char8_t>(0x80U + (code & 0x3FU)));
     }
     return outUtf8String;
   }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <compare>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -20,8 +20,10 @@ namespace bml {
       constexpr explicit operator std::size_t() const noexcept { return num; }
       constexpr explicit operator bool() const noexcept { return num; }
 
-      template <std::size_t OtherSize, std::enable_if_t<OtherSize<Size && Size % OtherSize == 0> * = nullptr> constexpr
-                                       operator SizeType<OtherSize>() const noexcept {
+      template <std::size_t OtherSize>
+      constexpr operator SizeType<OtherSize>() const noexcept
+        requires(OtherSize < Size && (Size % OtherSize) == 0)
+      {
         return SizeType<OtherSize>{num * (Size / OtherSize)};
       }
 
@@ -96,8 +98,9 @@ namespace bml {
       constexpr std::size_t bits() const noexcept { return num * Size; }
 
       constexpr std::uintmax_t mask() const noexcept {
-        if (bits() == std::numeric_limits<std::uintmax_t>::digits)
+        if (bits() >= std::numeric_limits<std::uintmax_t>::digits) {
           return std::numeric_limits<std::uintmax_t>::max();
+        }
         return (std::uintmax_t{1} << bits()) - 1U;
       }
 

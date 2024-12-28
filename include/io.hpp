@@ -6,13 +6,16 @@
 #include "sizes.hpp"
 #include "writer.hpp"
 
-#include <algorithm>
 #include <array>
 #include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <tuple>
+#include <type_traits>
 #include <variant>
 #include <vector>
 

@@ -2,8 +2,8 @@
 
 #include "common.hpp"
 
-#include <array>
 #ifdef _MSC_VER
+#include <array>
 #include <cuchar>
 #endif
 #include <string_view>

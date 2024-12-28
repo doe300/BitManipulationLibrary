@@ -10,9 +10,11 @@
 #include <array>
 #include <concepts>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <type_traits>
 #include <variant>
 #include <vector>
 

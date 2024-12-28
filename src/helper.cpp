@@ -6,6 +6,7 @@
 #include <bitset>
 #include <cmath>
 #include <iomanip>
+#include <numbers>
 
 namespace bml {
 
@@ -20,15 +21,15 @@ namespace bml {
     // Adapted from https://graphics.stanford.edu/~seander/bithacks.html#ReverseParallel
 
     // swap odd and even bits
-    value = ((value >> 1) & 0x55555555U) | ((value & 0x55555555U) << 1);
+    value = ((value >> 1U) & 0x55555555U) | ((value & 0x55555555U) << 1U);
     // swap consecutive pairs
-    value = ((value >> 2) & 0x33333333U) | ((value & 0x33333333U) << 2);
+    value = ((value >> 2u) & 0x33333333U) | ((value & 0x33333333U) << 2U);
     // swap nibbles ...
-    value = ((value >> 4) & 0x0F0F0F0FU) | ((value & 0x0F0F0F0FU) << 4);
+    value = ((value >> 4U) & 0x0F0F0F0FU) | ((value & 0x0F0F0F0FU) << 4U);
     // swap bytes
-    value = ((value >> 8) & 0x00FF00FFU) | ((value & 0x00FF00FFU) << 8);
+    value = ((value >> 8U) & 0x00FF00FFU) | ((value & 0x00FF00FFU) << 8U);
     // swap 2-byte long pairs
-    value = (value >> 16) | (value << 16);
+    value = (value >> 16U) | (value << 16U);
     return value & (4_bytes).mask();
   }
 
@@ -56,14 +57,15 @@ namespace bml {
 
   static constexpr std::string toHexStringInner(std::uintmax_t value, ByteCount typeSize, bool withPrefix) noexcept {
     std::string mapping = "0123456789ABCDEF";
-    std::string s(typeSize.value() * 2 + (withPrefix * 2), '0');
-    if (withPrefix)
+    std::string s(typeSize.value() * 2U + (withPrefix ? 2U : 0U), '0');
+    if (withPrefix) {
       s[1] = 'x';
+    }
 
     auto pos = s.rbegin();
     while (value && pos < s.rend()) {
       *pos++ = mapping[value % 16];
-      value /= 16;
+      value /= 16U;
     }
 
     return s;
@@ -78,8 +80,9 @@ namespace bml {
     numbers[0] = 0;
     numbers[1] = 1;
     for (std::size_t i = 2; i < numbers.size(); ++i) {
-      if (numbers[i - 1U] > (std::numeric_limits<uint32_t>::max() / 2U))
+      if (numbers[i - 1U] > (std::numeric_limits<uint32_t>::max() / 2U)) {
         throw;
+      }
       numbers[i] = numbers[i - 2U] + numbers[i - 1U];
     }
     return numbers;
@@ -142,7 +145,7 @@ namespace bml {
   }
 
   EncodedValue<std::uintmax_t> encodeNegaFibonacci(int32_t value) {
-    static constexpr auto GOLDEN_RATIO = 1.618034F;
+    static constexpr auto GOLDEN_RATIO = std::numbers::phi_v<float>;
     std::bitset<NEGAFIBONACCI_NUMBERS.size()> bits{};
 
     const auto requiresLargerValue = [](int32_t value, int32_t highestValue) {
@@ -206,7 +209,7 @@ namespace bml {
     if (numBits < 8_bits) {
       os << "0b";
       for (BitCount i{}; i < numBits; ++i) {
-        auto bit = (value >> (numBits - i - 1_bits)) & 0x1;
+        auto bit = (value >> (numBits - i - 1_bits)) & 0x1U;
         os << bit;
       }
     } else {

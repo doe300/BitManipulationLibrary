@@ -4,12 +4,10 @@
 
 #include "cpptest-main.h"
 
-#include <algorithm>
+#include <array>
 #include <iomanip>
-#include <memory>
-#include <span>
+#include <iterator>
 #include <sstream>
-#include <vector>
 
 using namespace bml;
 
@@ -265,8 +263,9 @@ private:
     cache = fillCacheHelper(cache, numBits, input);
     auto cacheSize = cache.size;
     auto result = readFromCache(cache, numBits);
-    if (cacheSize != (cache.size + numBits))
+    if (cacheSize != (cache.size + numBits)) {
       throw;
+    }
     return std::make_pair(result, cache);
   }
 
@@ -275,8 +274,9 @@ private:
     flushFullCacheBytes(
         cache,
         [&output](std::byte nextByte) {
-          if (output.size >= sizeof(std::uintmax_t) * 1_bytes)
+          if (output.size >= sizeof(std::uintmax_t) * 1_bytes) {
             return false;
+          }
           std::uintmax_t tmp = static_cast<uint8_t>(nextByte);
           output.value |= tmp << (sizeof(std::uintmax_t) * 1_bytes - 1_bytes - output.size);
           output.size += 1_bytes;

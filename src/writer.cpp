@@ -4,6 +4,7 @@
 #include "common.hpp"
 #include "helper.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace bml {
@@ -58,8 +59,8 @@ namespace bml {
     [[nodiscard]] virtual bool sinkBytes(std::span<const std::byte> bytes) = 0;
 
   private:
-    ByteCount sinkBytesWritten{};
-    BitCount cacheSize{};
+    ByteCount sinkBytesWritten;
+    BitCount cacheSize;
     /** is always left-adjusted to write the highest bits first */
     std::uintmax_t cache = 0;
   };
@@ -77,7 +78,7 @@ namespace bml {
   };
 
   struct ByteWriteRangeImpl final : BitWriter::WriterImpl {
-    explicit ByteWriteRangeImpl(BitWriter::ByteRange &&range) : sinkRange(std::move(range)) {}
+    explicit ByteWriteRangeImpl(BitWriter::ByteRange range) : sinkRange(range) {}
 
     bool sinkBytes(std::span<const std::byte> bytes) override {
       if (bytes.size() > sinkRange.size()) {
@@ -93,7 +94,7 @@ namespace bml {
 
   BitWriter::BitWriter() noexcept = default;
   BitWriter::BitWriter(ByteConsumer &&consumer) : impl(std::make_unique<ByteConsumerImpl>(std::move(consumer))) {}
-  BitWriter::BitWriter(ByteRange range) : impl(std::make_unique<ByteWriteRangeImpl>(std::move(range))) {}
+  BitWriter::BitWriter(ByteRange range) : impl(std::make_unique<ByteWriteRangeImpl>(range)) {}
   BitWriter::~BitWriter() noexcept = default;
 
   BitWriter &BitWriter::operator=(BitWriter &&other) noexcept {
@@ -154,12 +155,12 @@ namespace bml {
 
   void BitWriter::writeUtf16CodePoint(char32_t codePoint) {
     auto value = static_cast<uint32_t>(codePoint);
-    if (value < 0x10000) {
+    if (value < 0x10000U) {
       write(value, 2_bytes);
     } else {
-      value -= 0x10000;
-      write(0xD800 + ((value >> 10) & 0x3FF), 2_bytes);
-      write(0xDC00 + (value & 0x3FF), 2_bytes);
+      value -= 0x10000U;
+      write(0xD800U + ((value >> 10U) & 0x3FFU), 2_bytes);
+      write(0xDC00U + (value & 0x3FFU), 2_bytes);
     }
   }
 
@@ -173,6 +174,6 @@ namespace bml {
     write(invertBits(encodedValue, numBits), numBits);
   }
 
-  void BitWriter::flush() { fillToAligment(1_bytes, 0); }
+  void BitWriter::flush() { fillToAligment(1_bytes, false); }
 
 } // namespace bml
