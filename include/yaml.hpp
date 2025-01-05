@@ -4,6 +4,7 @@
 #include <concepts>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -14,28 +15,30 @@ namespace bml::yaml {
   /**
    * Container for user-defined and internal options for YAML representation generation.
    */
-  class Options {
-  public:
-    constexpr Options(uint32_t level = 0) noexcept : depth(level) {}
+  struct Options {
+    /**
+     * The default maximum number of elements for some sequences to list explicitly before only printing the element
+     * count.
+     */
+    static constexpr uint32_t DEFAULT_SEQUENCE_LIMIT = 16U;
+
+    uint32_t truncateSequenceLimit = DEFAULT_SEQUENCE_LIMIT;
+    uint32_t depth = 0;
+    bool inSequence = false;
+    bool hideEmpty = false;
+    bool prefixSpace = false;
 
     /**
      * Copies the options for the next indentation level.
      */
-    Options nextLevel() const noexcept { return Options{depth + 1}; }
+    constexpr Options nextLevel(bool isSequence) const noexcept {
+      return Options{truncateSequenceLimit, depth + 1, isSequence, hideEmpty, true};
+    }
 
     /**
      * Returns the prefix string to be added for the current indentation level.
      */
-    std::string indentation() const;
-
-    /**
-     * Returns the maximum number of elements for some sequences to list explicitly before only printing the element
-     * count.
-     */
-    std::size_t truncateSequenceLimit() const noexcept;
-
-  private:
-    uint32_t depth = 0;
+    std::string indentation(bool firstMember) const;
   };
 
   inline namespace concepts {
@@ -80,15 +83,28 @@ namespace bml::yaml {
   }
 
   template <typename T>
+  std::ostream &print(std::ostream &os, const Options &options, const std::optional<T> &val) {
+    if (val) {
+      return print(os, options, val.value());
+    }
+    return os << "null";
+  }
+
+  template <typename T>
   std::ostream &print(std::ostream &os, const Options &options, std::span<const T> val)
     requires(std::integral<T> || std::floating_point<T> || std::same_as<T, std::byte>)
   {
-    if (val.size() > options.truncateSequenceLimit()) {
+    if (options.prefixSpace) {
+      os << ' ';
+    }
+    if (val.size() > options.truncateSequenceLimit) {
       return os << "(" << val.size() << " entries)";
     }
     os << "[";
+    auto subOptions = options;
+    subOptions.prefixSpace = false;
     for (auto elem : val) {
-      print(os, options, elem) << ", ";
+      print(os, subOptions, elem) << ", ";
     }
     return os << "]";
   }
@@ -100,10 +116,8 @@ namespace bml::yaml {
     if (val.empty()) {
       return os << "[]";
     }
-    os << "\n";
     for (const auto &elem : val) {
-      os << options.indentation() << "- ";
-      print(os, options.nextLevel(), elem);
+      print(os, options.nextLevel(true /* sequence */), elem);
     }
     return os;
   }
@@ -128,12 +142,31 @@ namespace bml::yaml {
   namespace detail {
 
     template <typename T>
+    static bool hideMember(const Options & /* options */, const T &) noexcept {
+      return false;
+    }
+
+    template <typename T>
+    static bool hideMember(const Options &options, const std::optional<T> &val) noexcept {
+      return options.hideEmpty && !val;
+    }
+
+    template <typename T>
+    static bool hideMember(const Options &options, std::span<const T> val) noexcept {
+      return options.hideEmpty && val.empty();
+    }
+
+    template <typename T>
+    static bool hideMember(const Options &options, const std::vector<T> &val) noexcept {
+      return options.hideEmpty && val.empty();
+    }
+
+    template <typename T>
     void printMember(std::ostream &os, const Options &options, bool firstMember, std::string_view name, T &&last) {
-      if (!firstMember) {
-        os << options.indentation();
+      if (!hideMember(options, last)) {
+        os << options.indentation(firstMember) << name << ':';
+        bml::yaml::print(os, options.nextLevel(false /* no sequence */), std::forward<T>(last));
       }
-      os << name << ": ";
-      bml::yaml::print(os, options, std::forward<T>(last)) << '\n';
     }
 
     template <typename T, typename... Tail>
@@ -141,12 +174,14 @@ namespace bml::yaml {
                      Tail &&...tail) {
       auto nameEnd = names.find(',');
       auto nameLength = nameEnd != std::string_view::npos ? nameEnd : names.size();
-      if (!firstMember) {
-        os << options.indentation();
+      bool nextIsFirstMember = false;
+      if (hideMember(options, head)) {
+        nextIsFirstMember = firstMember;
+      } else {
+        os << options.indentation(firstMember) << names.substr(0, nameLength) << ':';
+        bml::yaml::print(os, options.nextLevel(false /* no sequence */), std::forward<T>(head));
       }
-      os << names.substr(0, nameLength) << ": ";
-      bml::yaml::print(os, options, std::forward<T>(head)) << '\n';
-      printMember(os, options, false, names.substr(nameEnd + 2), std::forward<Tail>(tail)...);
+      printMember(os, options, nextIsFirstMember, names.substr(nameEnd + 2), std::forward<Tail>(tail)...);
     }
   } // namespace detail
 } // namespace bml::yaml

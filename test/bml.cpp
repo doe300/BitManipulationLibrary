@@ -370,12 +370,24 @@ public:
   }
 };
 
+struct Complex {
+  uint32_t u;
+  Member m;
+  std::vector<uint32_t> nums;
+  std::vector<Member> additional;
+
+  std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
+};
+
+BML_YAML_DEFINE_PRINT(Complex, u, m, nums, additional)
+
 class TestYAML : public Test::Suite {
 public:
   TestYAML() : Test::Suite("YAML") {
     TEST_ADD(TestYAML::testSimple);
     TEST_ADD(TestYAML::testObject);
     TEST_ADD(TestYAML::testCollections);
+    TEST_ADD(TestYAML::testComplex);
   }
 
   void testSimple() {
@@ -391,14 +403,15 @@ public:
     checkPrint("Foo Bar"s, "'Foo Bar'");
     checkPrint(u8"Foo Bar ⠁⠃"s, "'Foo Bar ⠁⠃'");
     checkPrint(std::chrono::utc_seconds{}, "1970-01-01 00:00:00.000000000");
+    checkPrint(std::optional<int>{}, "null");
+    checkPrint(std::optional<int>{15}, "15");
   }
 
   void testObject() {
     Member m{13, 3000, -3};
     checkPrint(m, R"(a: 13
 b: 3000
-c: -3
-)");
+c: -3)");
   }
 
   void testCollections() {
@@ -417,8 +430,29 @@ c: -3
   c: -3
 - a: 42
   b: 42
-  c: 42
-)");
+  c: 42)");
+  }
+
+  void testComplex() {
+    Complex c{};
+    c.u = 42;
+    c.m = Member{13, 3000, -3};
+    c.nums = {13, 17, 1};
+    c.additional = {Member{13, 3000, -3}, Member{1, 3, -3}};
+
+    checkPrint(c, R"(u: 42
+m:
+  a: 13
+  b: 3000
+  c: -3
+nums: [13, 17, 1, ]
+additional:
+  - a: 13
+    b: 3000
+    c: -3
+  - a: 1
+    b: 3
+    c: -3)");
   }
 
 private:
