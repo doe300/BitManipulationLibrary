@@ -8,5 +8,6 @@ target_sources(bml PRIVATE
   reader.cpp
   types.cpp
   writer.cpp
+  yaml.cpp
 )
 target_precompile_headers(bml PUBLIC ../include/bml.hpp)

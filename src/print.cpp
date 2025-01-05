@@ -5,6 +5,10 @@
 #include <charconv>
 #include <cmath>
 #include <iomanip>
+#ifdef _MSC_VER
+#include <Windows.h>
+#include <cuchar>
+#endif
 
 namespace bml::detail {
 
@@ -70,6 +74,38 @@ namespace bml::detail {
       os << "0x" << std::setfill('0') << std::hex << std::setw(2) << static_cast<unsigned>(entry) << ", ";
     }
     return os << std::dec << ']';
+  }
+
+  static const bool NATIVE_UTF8 = [] {
+#ifdef _MSC_VER
+    return GetACP() == CP_UTF8;
+#else
+    // Linux and macOS use (most likely) UTF-8 for their string encoding, so just assume that.
+    // For any other platform we don't know the necessary conversion anyway, so also treat as UTF-8.
+    return true;
+#endif
+  }();
+
+  std::ostream &printUtf8String(std::ostream &os, std::u8string_view val) {
+    if (NATIVE_UTF8) {
+      return os << '\'' << std::string_view(reinterpret_cast<const char *>(val.data()), val.size()) << '\'';
+    }
+#ifdef _MSC_VER
+    std::wstring tmp(val.size() * 2U, L'\0');
+    auto numChars = MultiByteToWideChar(CP_UTF8, 0, reinterpret_cast<const char *>(val.data()), val.size(),
+                                        &tmp.front(), tmp.size());
+    tmp.resize(numChars);
+    std::string result(val.size() * 2U, '\0');
+    numChars = WideCharToMultiByte(CP_ACP, 0, tmp.data(), tmp.size(), &result.front(), result.size(), nullptr, nullptr);
+    result.resize(numChars);
+    return os << '\'' << result << '\'';
+#else
+    return os << "(unknown encoding)";
+#endif
+  }
+
+  std::ostream &operator<<(std::ostream &os, const PrintView<std::u8string> &view) {
+    return printUtf8String(os, view.value);
   }
 
 } // namespace bml::detail

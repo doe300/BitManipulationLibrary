@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sizes.hpp"
+
 #include <array>
 #include <concepts>
 #include <cstddef>
@@ -53,7 +55,7 @@ private:                                                                        
   void printInner(std::ostream &os) const {                                                                            \
     static const auto NAMES = #__VA_ARGS__; /* are stringified as single string with commas */                         \
     os << #Type << '{';                                                                                                \
-    detail::printMember(os, NAMES, __VA_ARGS__);                                                                       \
+    bml::detail::printMember(os, NAMES, __VA_ARGS__);                                                                  \
     os << '}';                                                                                                         \
   }                                                                                                                    \
                                                                                                                        \
@@ -117,6 +119,16 @@ public:                                                                         
       }
 
       const Type &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
+    };
+
+    template <std::size_t N>
+    struct PrintView<SizeType<N>> {
+      friend std::ostream &operator<<(std::ostream &os, const PrintView<SizeType<N>> &view) {
+        return os << view.value.toString();
+      }
+
+      const SizeType<N> &value;
       [[no_unique_address]] ViewOnly viewOnly{};
     };
 
@@ -236,6 +248,14 @@ public:                                                                         
       }
 
       const std::array<std::byte, N> &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
+    };
+
+    template <>
+    struct PrintView<std::u8string> {
+      friend std::ostream &operator<<(std::ostream &os, const PrintView<std::u8string> &view);
+
+      const std::u8string &value;
       [[no_unique_address]] ViewOnly viewOnly{};
     };
 

@@ -2,6 +2,7 @@
 
 #include "sizes.hpp"
 #include "types.hpp"
+#include "yaml.hpp"
 
 #include <algorithm>
 #include <array>
@@ -85,6 +86,8 @@ public:
     return os << '{' << static_cast<uint32_t>(member.a) << ", " << member.b << ", " << static_cast<int32_t>(member.c)
               << '}';
   }
+
+  std::ostream &printYAML(std::ostream &os, const yaml::Options &options) const;
 
 private:
   uint8_t a;

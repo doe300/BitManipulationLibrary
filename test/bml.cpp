@@ -1,6 +1,7 @@
 #include "bml.hpp"
 #include "common.hpp"
 #include "test_helper.hpp"
+#include "yaml.hpp"
 
 #include "cpptest-main.h"
 
@@ -10,6 +11,8 @@
 #include <sstream>
 
 using namespace bml;
+
+BML_YAML_DEFINE_PRINT(Member, a, b, c)
 
 struct TestHelper : public Test::Suite {
 public:
@@ -367,11 +370,72 @@ public:
   }
 };
 
+class TestYAML : public Test::Suite {
+public:
+  TestYAML() : Test::Suite("YAML") {
+    TEST_ADD(TestYAML::testSimple);
+    TEST_ADD(TestYAML::testObject);
+    TEST_ADD(TestYAML::testCollections);
+  }
+
+  void testSimple() {
+    using namespace std::string_literals;
+
+    checkPrint(std::byte{0x11}, "0x11");
+    checkPrint(false, "false");
+    checkPrint(true, "true");
+    checkPrint(112U, "112");
+    checkPrint(-2300, "-2300");
+    checkPrint(-2300.3F, "-2300.3");
+    checkPrint(42.0, "42");
+    checkPrint("Foo Bar"s, "'Foo Bar'");
+    checkPrint(u8"Foo Bar ⠁⠃"s, "'Foo Bar ⠁⠃'");
+    checkPrint(std::chrono::utc_seconds{}, "1970-01-01 00:00:00.000000000");
+  }
+
+  void testObject() {
+    Member m{13, 3000, -3};
+    checkPrint(m, R"(a: 13
+b: 3000
+c: -3
+)");
+  }
+
+  void testCollections() {
+    checkPrint(std::vector<std::byte>{std::byte{0x01}, std::byte{0x03}, std::byte{0xFF}}, "[0x01, 0x03, 0xff, ]");
+    checkPrint(std::vector<uint8_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+               "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, ]");
+    checkPrint(std::vector<uint8_t>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+               "(20 entries)");
+
+    checkPrint(std::vector<Member>{Member{13, 3000, -3}, Member{1, 3, -3}, Member{42, 42, 42}}, R"(
+- a: 13
+  b: 3000
+  c: -3
+- a: 1
+  b: 3
+  c: -3
+- a: 42
+  b: 42
+  c: 42
+)");
+  }
+
+private:
+  template <typename T>
+  void checkPrint(const T &val, std::string_view expectedString) {
+    std::stringstream ss;
+    bml::yaml::print(ss, bml::yaml::Options{}, val);
+    TEST_ASSERT_EQUALS(expectedString, ss.str());
+  }
+};
+
 int main(int argc, char **argv) {
   registerBinaryMapTests();
   registerTypeTests();
   Test::registerSuite(Test::newInstance<TestHelper>, "helper");
   Test::registerSuite(Test::newInstance<TestCache>, "cache");
   Test::registerSuite(Test::newInstance<TestSizes>, "sizes");
+  Test::registerSuite(Test::newInstance<TestYAML>, "yaml");
   return Test::runSuites(argc, argv);
 }
