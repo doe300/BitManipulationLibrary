@@ -113,9 +113,9 @@ struct POD2 {
   std::string text;
   std::array<uint8_t, 3> buf;
 
-  void setA(int32_t a) { this->a = a; }
+  void setA(int32_t val) { a = val; }
   int32_t getA() const { return a; }
-  void setC(char c) { this->c = c; }
+  void setC(char val) { c = val; }
   char getC() const { return c; }
 
   BML_DEFINE_PRINT(POD2, a, c, length, text, buf)

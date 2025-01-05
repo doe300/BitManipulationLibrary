@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <span>
 
@@ -43,6 +44,7 @@ namespace bml {
     explicit BitReader(const uint8_t *begin, const uint8_t *end) : BitReader(std::as_bytes(std::span{begin, end})) {}
     explicit BitReader(const std::byte *begin, const std::byte *end) : BitReader(ByteRange{begin, end}) {}
     explicit BitReader(std::span<const uint8_t> range) : BitReader(std::as_bytes(range)) {}
+    explicit BitReader(std::istream &is);
 
     // Disallow copying, since the different byte sources might behave differently when being copied
     BitReader(const BitReader &) = delete;
@@ -50,7 +52,7 @@ namespace bml {
     ~BitReader() noexcept;
 
     BitReader &operator=(const BitReader &) = delete;
-    BitReader &operator=(BitReader && other) noexcept;
+    BitReader &operator=(BitReader &&other) noexcept;
 
     /**
      * Returns the number of bits already read.

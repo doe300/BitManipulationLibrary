@@ -1,5 +1,6 @@
 #include "types.hpp"
 
+#include "errors.hpp"
 #include "test_helper.hpp"
 
 #include "cpptest-main.h"
@@ -216,20 +217,20 @@ public:
       TEST_ASSERT_FALSE(reader->hasMoreBytes());
       TEST_ASSERT_EQUALS(0_bits, reader->skipToAligment(1_bytes));
       TEST_THROWS_NOTHING(reader->assertAlignment(1_bytes));
-      TEST_THROWS(reader->read(), std::out_of_range);
-      TEST_THROWS(reader->peek(7_bits), std::out_of_range);
-      TEST_THROWS(reader->read(3_bits), std::out_of_range);
-      TEST_THROWS(reader->readBytes(2_bytes), std::out_of_range);
-      TEST_THROWS(reader->readByte(), std::out_of_range);
+      TEST_THROWS(reader->read(), EndOfStreamError);
+      TEST_THROWS(reader->peek(7_bits), EndOfStreamError);
+      TEST_THROWS(reader->read(3_bits), EndOfStreamError);
+      TEST_THROWS(reader->readBytes(2_bytes), EndOfStreamError);
+      TEST_THROWS(reader->readByte(), EndOfStreamError);
       std::vector<std::byte> data(42);
-      TEST_THROWS(reader->readBytesInto(data), std::out_of_range);
-      TEST_THROWS(reader->readExpGolomb(), std::out_of_range);
-      TEST_THROWS(reader->readSignedExpGolomb(), std::out_of_range);
-      TEST_THROWS(reader->readUtf8CodePoint(), std::out_of_range);
-      TEST_THROWS(reader->readUtf16CodePoint(), std::out_of_range);
-      TEST_THROWS(reader->readFibonacci(), std::out_of_range);
-      TEST_THROWS(reader->readSignedFibonacci(), std::out_of_range);
-      TEST_THROWS(reader->skip(1_bytes), std::out_of_range);
+      TEST_THROWS(reader->readBytesInto(data), EndOfStreamError);
+      TEST_THROWS(reader->readExpGolomb(), EndOfStreamError);
+      TEST_THROWS(reader->readSignedExpGolomb(), EndOfStreamError);
+      TEST_THROWS(reader->readUtf8CodePoint(), EndOfStreamError);
+      TEST_THROWS(reader->readUtf16CodePoint(), EndOfStreamError);
+      TEST_THROWS(reader->readFibonacci(), EndOfStreamError);
+      TEST_THROWS(reader->readSignedFibonacci(), EndOfStreamError);
+      TEST_THROWS(reader->skip(1_bytes), EndOfStreamError);
       TEST_ASSERT_FALSE(reader->hasMoreBytes());
     }
   }
@@ -245,20 +246,20 @@ public:
       TEST_THROWS_NOTHING(writer->assertAlignment(1_bytes));
       // is cached, not yet written back to the sink
       TEST_THROWS_NOTHING(writer->write(true));
-      TEST_THROWS(writer->flush(), std::out_of_range);
-      TEST_THROWS(writer->write(42, 16_bits), std::out_of_range);
-      TEST_THROWS(writer->writeBytes(42, 3_bytes), std::out_of_range);
-      TEST_THROWS(writer->writeByte(std::byte{17}), std::out_of_range);
+      TEST_THROWS(writer->flush(), EndOfStreamError);
+      TEST_THROWS(writer->write(42, 16_bits), EndOfStreamError);
+      TEST_THROWS(writer->writeBytes(42, 3_bytes), EndOfStreamError);
+      TEST_THROWS(writer->writeByte(std::byte{17}), EndOfStreamError);
       std::vector<std::byte> data(45);
-      TEST_THROWS(writer->writeBytes(data), std::out_of_range);
-      TEST_THROWS(writer->writeExpGolomb(42), std::out_of_range);
-      TEST_THROWS(writer->writeSignedExpGolomb(-420), std::out_of_range);
-      TEST_THROWS(writer->flush(), std::out_of_range);
-      TEST_THROWS(writer->writeUtf8CodePoint(U'⠁'), std::out_of_range);
-      TEST_THROWS(writer->writeUtf16CodePoint(U'⠁'), std::out_of_range);
-      TEST_THROWS(writer->writeFibonacci(42), std::out_of_range);
-      TEST_THROWS(writer->writeSignedFibonacci(-14), std::out_of_range);
-      TEST_THROWS(writer->flush(), std::out_of_range);
+      TEST_THROWS(writer->writeBytes(data), EndOfStreamError);
+      TEST_THROWS(writer->writeExpGolomb(42), EndOfStreamError);
+      TEST_THROWS(writer->writeSignedExpGolomb(-420), EndOfStreamError);
+      TEST_THROWS(writer->flush(), EndOfStreamError);
+      TEST_THROWS(writer->writeUtf8CodePoint(U'⠁'), EndOfStreamError);
+      TEST_THROWS(writer->writeUtf16CodePoint(U'⠁'), EndOfStreamError);
+      TEST_THROWS(writer->writeFibonacci(42), EndOfStreamError);
+      TEST_THROWS(writer->writeSignedFibonacci(-14), EndOfStreamError);
+      TEST_THROWS(writer->flush(), EndOfStreamError);
     }
   }
 

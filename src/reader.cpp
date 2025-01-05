@@ -2,6 +2,7 @@
 #include "reader.hpp"
 
 #include "common.hpp"
+#include "errors.hpp"
 #include "helper.hpp"
 
 #include <algorithm>
@@ -62,7 +63,7 @@ namespace bml {
         outBytes = outBytes.subspan<1>();
       }
       if (!extractSourceBytes(outBytes)) {
-        throw std::out_of_range("Cannot read more bytes, end of input reached");
+        throw EndOfStreamError("Cannot read more bytes, end of input reached");
       } else {
         sourceBytesRead += outBytes.size() * 1_bytes;
       }
@@ -81,7 +82,7 @@ namespace bml {
       // 2. Skip any remaining full bytes directly in source
       if (auto numBytes = ByteCount{(numBits - numBitsSkipped) / 1_bytes}) {
         if (!skipSourceBytes(numBytes)) {
-          throw std::out_of_range("Cannot skip more bytes, end of input reached");
+          throw EndOfStreamError("Cannot skip more bytes, end of input reached");
         }
         numBitsSkipped += numBytes;
         sourceBytesRead += numBytes;
@@ -149,7 +150,7 @@ namespace bml {
           tmp, numBits, [this](std::byte &nextByte) { return extractSourceByte(nextByte); },
           [throwOnEos]() {
             if (throwOnEos) {
-              throw std::out_of_range("Cannot read more bytes, end of input reached");
+              throw EndOfStreamError("Cannot read more bytes, end of input reached");
             }
           });
       cache = tmp.value;
@@ -217,9 +218,37 @@ namespace bml {
     BitReader::ByteRange sourceRange;
   };
 
+  struct ByteInputStreamImpl final : BitReader::ReaderImpl {
+    explicit ByteInputStreamImpl(std::istream &is) : input(is) { input.exceptions(std::ios::badbit); }
+
+    bool extractSourceByte(std::byte &out) override {
+      if (!input.eof()) {
+        input.read(reinterpret_cast<char *>(&out), 1);
+        return static_cast<bool>(input);
+      }
+      return false;
+    }
+
+    bool extractSourceBytes(std::span<std::byte> outBytes) override {
+      if (!input.eof()) {
+        input.read(reinterpret_cast<char *>(outBytes.data()), static_cast<std::streamsize>(outBytes.size()));
+        return static_cast<bool>(input);
+      }
+      return false;
+    }
+
+    bool skipSourceBytes(ByteCount numBytes) override {
+      input.ignore(static_cast<std::streamsize>(numBytes.value()));
+      return static_cast<bool>(input);
+    }
+
+    std::istream &input;
+  };
+
   BitReader::BitReader() noexcept = default;
   BitReader::BitReader(ByteGenerator &&generator) : impl(std::make_unique<ByteGeneratorImpl>(std::move(generator))) {}
   BitReader::BitReader(ByteRange range) : impl(std::make_unique<ByteReadRangeImpl>(range)) {}
+  BitReader::BitReader(std::istream &is) : impl(std::make_unique<ByteInputStreamImpl>(is)) {}
   BitReader::~BitReader() noexcept = default;
 
   BitReader &BitReader::operator=(BitReader &&other) noexcept {

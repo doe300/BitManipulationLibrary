@@ -2,6 +2,7 @@
 #include "writer.hpp"
 
 #include "common.hpp"
+#include "errors.hpp"
 #include "helper.hpp"
 
 #include <algorithm>
@@ -40,7 +41,7 @@ namespace bml {
         throw std::invalid_argument("Output bit stream is not properly aligned");
       }
       if (!sinkBytes(bytes)) {
-        throw std::out_of_range("Cannot write more bytes, end of output reached");
+        throw EndOfStreamError("Cannot write more bytes, end of output reached");
       }
       sinkBytesWritten += ByteCount{bytes.size()};
     }
@@ -49,7 +50,7 @@ namespace bml {
       Cache tmp{cache, cacheSize};
       sinkBytesWritten += flushFullCacheBytes(
           tmp, [this](std::byte nextByte) { return sinkByte(nextByte); },
-          []() { throw std::out_of_range("Cannot write more bytes, end of output reached"); });
+          []() { throw EndOfStreamError("Cannot write more bytes, end of output reached"); });
       cache = tmp.value;
       cacheSize = tmp.size;
     }
@@ -92,9 +93,25 @@ namespace bml {
     BitWriter::ByteRange sinkRange;
   };
 
+  struct ByteOutputStreamImpl final : BitWriter::WriterImpl {
+    explicit ByteOutputStreamImpl(std::ostream &os) : output(os) { output.exceptions(std::ios::badbit); }
+
+    bool sinkByte(std::byte byte) override {
+      output.write(reinterpret_cast<const char *>(&byte), 1);
+      return static_cast<bool>(output);
+    }
+    bool sinkBytes(std::span<const std::byte> bytes) override {
+      output.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+      return static_cast<bool>(output);
+    }
+
+    std::ostream &output;
+  };
+
   BitWriter::BitWriter() noexcept = default;
   BitWriter::BitWriter(ByteConsumer &&consumer) : impl(std::make_unique<ByteConsumerImpl>(std::move(consumer))) {}
   BitWriter::BitWriter(ByteRange range) : impl(std::make_unique<ByteWriteRangeImpl>(range)) {}
+  BitWriter::BitWriter(std::ostream &os) : impl(std::make_unique<ByteOutputStreamImpl>(os)) {}
   BitWriter::~BitWriter() noexcept = default;
 
   BitWriter &BitWriter::operator=(BitWriter &&other) noexcept {

@@ -148,9 +148,9 @@ namespace bml {
     static constexpr auto GOLDEN_RATIO = std::numbers::phi_v<float>;
     std::bitset<NEGAFIBONACCI_NUMBERS.size()> bits{};
 
-    const auto requiresLargerValue = [](int32_t value, int32_t highestValue) {
+    const auto requiresLargerValue = [](int32_t val, int32_t highestValue) {
       auto limit = static_cast<int32_t>(std::ceil(GOLDEN_RATIO * static_cast<float>(highestValue)));
-      return ((highestValue < 0 && value <= limit) || (highestValue > 0 && value >= limit));
+      return ((highestValue < 0 && val <= limit) || (highestValue > 0 && val >= limit));
     };
 
     auto startIndex =

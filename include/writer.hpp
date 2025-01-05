@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <span>
 
@@ -42,6 +43,7 @@ namespace bml {
     explicit BitWriter(uint8_t *begin, uint8_t *end) : BitWriter(std::as_writable_bytes(std::span{begin, end})) {}
     explicit BitWriter(std::byte *begin, std::byte *end) : BitWriter(ByteRange{begin, end}) {}
     explicit BitWriter(std::span<uint8_t> range) : BitWriter(std::as_writable_bytes(range)) {}
+    explicit BitWriter(std::ostream &os);
 
     // Disallow copying, since the different byte sinks might behave differently when being copied
     BitWriter(const BitWriter &) = delete;
