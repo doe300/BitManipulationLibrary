@@ -9,3 +9,7 @@ add_test(NAME TestBml COMMAND TestBml)
 if(BML_BUILD_EXAMPLES)
   add_test(NAME StringMaps COMMAND StringMaps)
 endif()
+
+if(BML_BUILD_EBML)
+  add_subdirectory(ebml)
+endif()
