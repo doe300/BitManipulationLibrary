@@ -35,6 +35,7 @@ public:
     TEST_ADD(TestMkvElements::testBlockGroup);
     TEST_ADD(TestMkvElements::testCluster);
     TEST_ADD(TestMkvElements::testSegment);
+    TEST_ADD(TestMkvElements::testUnknownSizeSegmentWithCluster);
   }
 
   void testSeek() {
@@ -646,6 +647,64 @@ tags:
             tagLanguage: 'und'
             tagDefault: true
             tagString: 'Elephant Dream - test 3')");
+  }
+
+  void testUnknownSizeSegmentWithCluster() {
+    const auto DATA = toBytes({0x18, 0x53, 0x80, 0x67, 0xFF, /* CRC32 */ 0xBF, 0x84, 0xE0, 0x2E, 0xEE, 0xCF,
+                               /* Cluster */
+                               0x1F, 0x43, 0xB6, 0x75, 0xFF, /* timestamp */ 0xE7, 0x82, 0x3E, 0x80,
+                               /* position */ 0xA7, 0x83, 0x50, 0x16, 0x46,
+                               /* SimpleBlock */
+                               0xA3, 0x87, 0xA2, 0x82, 0xFF, 0xF8, 0x80, 0xC4, 0x44,
+                               /* SimpleBlock */
+                               0xA3, 0x84, 0xDE, 0xAD, 0xBE, 0xAF,
+                               /* Tags */
+                               0x12, 0x54, 0xC3, 0x67, 0xB1,
+                               /* CRC32 */ 0xBF, 0x84, 0xE7, 0x12, 0x18, 0xFE,
+                               /* Tag */
+                               0x73, 0x73, 0xA8,
+                               /* Targets */ 0x63, 0xC0, 0x80,
+                               /* SimpleTag */
+                               0x67, 0xC8, 0xA2, /* tagName */ 0x45, 0xA3, 0x85, 0x54, 0x49, 0x54, 0x4C, 0x45,
+                               /* tagString */ 0x44, 0x87, 0x97, 0x45, 0x6C, 0x65, 0x70, 0x68, 0x61, 0x6E, 0x74, 0x20,
+                               0x44, 0x72, 0x65, 0x61, 0x6D, 0x20, 0x2D, 0x20, 0x74, 0x65, 0x73, 0x74, 0x20, 0x33});
+
+    Segment expectedSegment{};
+    expectedSegment.crc32 = 0xE02EEECF;
+    {
+      Cluster cluster{};
+      cluster.timestamp = 0x3E80;
+      cluster.position = 0x501646;
+
+      SimpleBlock block{};
+      block.dataSize = 7_bytes;
+      block.data = toBytes({0xA2, 0x82, 0xFF, 0xF8, 0x80, 0xC4, 0x44});
+      cluster.simpleBlocks.push_back(std::move(block));
+
+      block.dataSize = 4_bytes;
+      block.data = toBytes({0xDE, 0xAD, 0xBE, 0xAF});
+      cluster.simpleBlocks.push_back(std::move(block));
+      expectedSegment.clusters.push_back(std::move(cluster));
+    }
+    {
+      Tags tags{};
+      tags.crc32 = 0xE71218FE;
+
+      Tag tag{};
+      SimpleTag simpleTag{};
+      simpleTag.tagName = u8"TITLE";
+      simpleTag.tagString = u8"Elephant Dream - test 3";
+      tag.simpleTags.push_back(std::move(simpleTag));
+      tags.tags.push_back(std::move(tag));
+      expectedSegment.tags.push_back(std::move(tags));
+    }
+
+    bml::BitReader reader{std::span{DATA}};
+    Segment segment{};
+    segment.read(reader, true);
+    TEST_THROWS_NOTHING(reader.assertAlignment(bml::ByteCount{1}));
+    TEST_ASSERT_FALSE(reader.hasMoreBytes());
+    TEST_ASSERT_EQUALS(expectedSegment, segment);
   }
 
 private:

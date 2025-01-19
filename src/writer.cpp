@@ -46,6 +46,17 @@ namespace bml {
       sinkBytesWritten += ByteCount{bytes.size()};
     }
 
+    void fillBytes(std::byte value, ByteCount numBytes) {
+      flushFullBytes();
+      if (cacheSize) {
+        throw std::invalid_argument("Output bit stream is not properly aligned");
+      }
+      if (!sinkCopies(value, numBytes)) {
+        throw EndOfStreamError("Cannot write more bytes, end of output reached");
+      }
+      sinkBytesWritten += numBytes;
+    }
+
     void flushFullBytes() {
       Cache tmp{cache, cacheSize};
       sinkBytesWritten += flushFullCacheBytes(
@@ -58,6 +69,15 @@ namespace bml {
   protected:
     [[nodiscard]] virtual bool sinkByte(std::byte byte) { return sinkBytes(std::span{&byte, 1}); }
     [[nodiscard]] virtual bool sinkBytes(std::span<const std::byte> bytes) = 0;
+
+    [[nodiscard]] virtual bool sinkCopies(std::byte value, ByteCount numBytes) {
+      for (auto i = 0_bytes; i < numBytes; i += 1_bytes) {
+        if (!sinkByte(value)) {
+          return false;
+        }
+      }
+      return true;
+    }
 
   private:
     ByteCount sinkBytesWritten;
@@ -87,6 +107,15 @@ namespace bml {
       }
       std::copy_n(bytes.begin(), sinkRange.size(), sinkRange.begin());
       sinkRange = sinkRange.subspan(bytes.size());
+      return true;
+    }
+
+    bool sinkCopies(std::byte value, ByteCount numBytes) override {
+      if (numBytes.num > sinkRange.size()) {
+        return false;
+      }
+      std::fill_n(sinkRange.begin(), numBytes.num, value);
+      sinkRange = sinkRange.subspan(numBytes.num);
       return true;
     }
 
@@ -153,6 +182,11 @@ namespace bml {
   void BitWriter::writeBytes(std::span<const std::byte> bytes) {
     assertAlignment(BYTE_SIZE);
     assertImpl(impl).writeBytes(bytes);
+  }
+
+  void BitWriter::fillBytes(std::byte value, ByteCount numBytes) {
+    assertAlignment(BYTE_SIZE);
+    assertImpl(impl).fillBytes(value, numBytes);
   }
 
   void BitWriter::writeExpGolomb(std::uintmax_t value) {

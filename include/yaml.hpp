@@ -50,6 +50,20 @@ namespace bml::yaml {
     template <typename Type>
     concept HasPrintYAMLMember =
         requires(const Type &obj) { obj.printYAML(std::declval<std::ostream &>(), std::declval<const Options &>()); };
+
+    /*!
+     * Concept checking whether sequences of the given member type are listed as simple lists (e.g. "[a, b, d, c]") or
+     * more complex multi-line lists.
+     */
+    template <typename Type>
+    concept SimpleListMember = std::integral<Type> || std::floating_point<Type> || std::same_as<Type, std::byte> ||
+                               (HasPrintYAMLMember<Type> && requires() {
+                                 typename Type::yaml_print_type;
+                                 requires(std::integral<typename Type::yaml_print_type> ||
+                                          std::floating_point<typename Type::yaml_print_type> ||
+                                          std::same_as<typename Type::yaml_print_type, std::byte>);
+                               });
+
   } // namespace concepts
 
   std::ostream &print(std::ostream &os, const Options &options, std::byte val);
@@ -71,8 +85,11 @@ namespace bml::yaml {
     return print(os, options, static_cast<intmax_t>(val));
   }
 
-  template <typename Clock>
-  std::ostream &print(std::ostream &os, const Options & /* options */, const std::chrono::time_point<Clock> &val) {
+  template <typename Clock, typename Duration>
+  std::ostream &print(std::ostream &os, const Options &options, const std::chrono::time_point<Clock, Duration> &val) {
+    if (options.prefixSpace) {
+      os << ' ';
+    }
     return os << val;
   }
 
@@ -92,7 +109,7 @@ namespace bml::yaml {
 
   template <typename T>
   std::ostream &print(std::ostream &os, const Options &options, std::span<const T> val)
-    requires(std::integral<T> || std::floating_point<T> || std::same_as<T, std::byte>)
+    requires(SimpleListMember<T>)
   {
     if (options.prefixSpace) {
       os << ' ';
@@ -111,7 +128,7 @@ namespace bml::yaml {
 
   template <typename T>
   std::ostream &print(std::ostream &os, const Options &options, std::span<const T> val)
-    requires(!std::integral<T> && !std::floating_point<T> && !std::same_as<T, std::byte>)
+    requires(!SimpleListMember<T>)
   {
     if (val.empty()) {
       return os << "[]";

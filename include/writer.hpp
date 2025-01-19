@@ -106,6 +106,13 @@ namespace bml {
     void writeBytes(std::span<const std::byte> bytes);
 
     /**
+     * Fill the given amount of aligned bytes with copies of the given byte value.
+     *
+     * Throws an exception if the write position is not byte aligned, see assertAlignment().
+     */
+    void fillBytes(std::byte value, ByteCount numBytes);
+
+    /**
      * Encodes the given value with the unsigned Exponential-Golomb coding and writes it to the byte sink.
      */
     void writeExpGolomb(std::uintmax_t value);

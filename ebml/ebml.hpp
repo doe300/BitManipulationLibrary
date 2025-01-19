@@ -14,6 +14,12 @@
 #include <string>
 #include <vector>
 
+/**
+ * Types for reading/writing the basic Elements of the Extensible Binary Meta Language (EBML, RFC 8794) container
+ * format.
+ *
+ * See: https://www.rfc-editor.org/rfc/rfc8794.html
+ */
 namespace bml::ebml {
 
   /** Marker enum for element IDs as defined in the associated specifications */
@@ -31,14 +37,28 @@ namespace bml::ebml {
       { Type::ID } -> std::convertible_to<ElementId>;
     };
 
+    /**
+     * Concept checking whether the given type is a fully supported EBML Element type.
+     */
     template <typename Type>
     concept EBMLElement =
         Readable<Type> && Writeable<Type> && Printable<Type> && Skipable<Type> && Copyable<Type> && HasEBMLID<Type>;
   } // namespace concepts
 
   namespace detail {
+    /**
+     * The maximum possible value for a Variable-Size Integer with at most 8 bytes.
+     */
     static constexpr ByteCount VINTMAX{(1ULL << 56ULL) - 2ULL};
+
+    /**
+     * The marker value for a Variable-Size Integer indicating a Master Element with unknown size.
+     */
     static constexpr ByteCount UNKNOWN_SIZE{std::numeric_limits<std::size_t>::max()};
+
+    /**
+     * The Epoch of the Date Element, specified as 2001-01-01T00:00:00.000000000 UTC.
+     */
     extern const Date DATE_EPOCH;
 
     template <std::unsigned_integral T>
@@ -62,6 +82,9 @@ namespace bml::ebml {
       return requiredBytes(static_cast<std::underlying_type_t<ElementId>>(id)) + elementSize + contentSize;
     }
 
+    /**
+     * Base type for common functionality of "simple" (non-Master) Element types.
+     */
     template <typename T>
     class BaseSimpleElement {
     public:
@@ -97,6 +120,9 @@ namespace bml::ebml {
       friend class BaseSimpleElement;
     };
 
+    /**
+     * Helper type to allow for compile-time constant (template parameter) string literals.
+     */
     template <size_t N>
     struct StringLiteral {
       constexpr StringLiteral(const char (&str)[N]) { std::copy_n(str, N, value); }
@@ -110,6 +136,9 @@ namespace bml::ebml {
   // Basic Element Types
   ////
 
+  /**
+   * Specialization of the Unsigned Integer Element with an allowed range of 0-1 mapping to a C++ boolean value.
+   */
   template <ElementId Id, bool Default = false>
   struct BoolElement : public detail::BaseSimpleElement<bool> {
     static constexpr ElementId ID = Id;
@@ -282,6 +311,12 @@ namespace bml::ebml {
 
   using CRC32 = UnsignedIntElement<0xBF_id>;
 
+  /**
+   * Void Element for skipped/ignored data.
+   *
+   * NOTE: The contents of the Void Element are not actually read, just its length. On write, the skipped number of
+   * bytes are filled with zeroes.
+   */
   struct Void {
     static constexpr ElementId ID{0xEC};
 
@@ -296,6 +331,11 @@ namespace bml::ebml {
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
   };
 
+  /**
+   * Base type for all Master Element types.
+   *
+   * This base class contains the CRC-32 and Void Elements which can occur globally as children of any Master Element.
+   */
   struct MasterElement {
     static constexpr BitCount minNumBits() { return 2_bytes /* 1 ID, 1 size */; };
     static constexpr BitCount maxNumBits() { return detail::calcElementSize(0x1A45DFA3_id, detail::VINTMAX); }
@@ -347,18 +387,57 @@ namespace bml::ebml {
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
   };
 
+/**
+ * Defines the implementations of the member functions to read/write the Master Element with the following signatures:
+ *
+ * void printYAML(BitReader &);
+ * void write(bml::BitWriter &writer) const;
+ */
 #define BML_EBML_DEFINE_IO(Type, ...)                                                                                  \
   void Type ::read(bml::BitReader &reader) { bml::ebml::detail::readMasterElement(reader, ID, __VA_ARGS__); }          \
   void Type ::write(bml::BitWriter &writer) const { bml::ebml::detail::writeMasterElement(writer, ID, __VA_ARGS__); }
 
+  /**
+   * Helper functions for implementors of EBML-based container formats.
+   */
   namespace detail {
+    /**
+     * Reads a Variable-Size Integer and returns its read value plus the number of value bits.
+     *
+     * The includePrefix determines whether the VINT_WIDTH + VINT_MARKER prefix should be included in the returned value
+     * (and bit-width) or not.
+     */
     std::pair<uintmax_t, BitCount> readVariableSizeInteger(BitReader &reader, bool includePrefix);
+
+    /**
+     * Returns Element header and returns the Element Data Size.
+     *
+     * NOTE: This function throws an error if the Element ID read from the input does not match the expected ID.
+     */
     ByteCount readElementHeader(BitReader &reader, ElementId id);
+
+    /**
+     * Writes the Element header by writing the given Element ID and Element Data Size values.
+     */
     void writeElementHeader(BitWriter &writer, ElementId id, ByteCount contentSize);
 
+    /**
+     * Reads the Master Element with the given ID from the given bit reader and reads all its given members.
+     *
+     * The optional terminatingElementIds parameter can be used to support Master Elements with Unknown Data Size. Any
+     * Element ID present in this list will finish reading into the current Master Element and return from this
+     * function. See https://www.rfc-editor.org/rfc/rfc8794.html#section-6.2 for which Element IDs need to be passed
+     * into this parameter.
+     */
     void readMasterElement(BitReader &reader, ElementId id,
                            const std::map<ElementId, std::function<void(BitReader &)>> &members,
                            const std::set<ElementId> &terminatingElementIds = {});
+
+    /**
+     * Writes the Master Element with the given ID to the given bit writer and all its members given.
+     *
+     * NOTE: The members are written in order of listing in the members parameter.
+     */
     void writeMasterElement(BitWriter &writer, ElementId id,
                             const std::vector<std::pair<ElementId, std::function<void(BitWriter &)>>> &members);
 
@@ -383,6 +462,14 @@ namespace bml::ebml {
       return std::make_pair(T::ID, [&member](BitReader &reader) { member.push_back(bml::read<T>(reader)); });
     }
 
+    /**
+     * Reads the Master Element with the given ID from the given bit reader and reads all its given members.
+     *
+     * The variadic template parameters whould be references to the members themselves.
+     *
+     * This is a convenience function for easier mapping of "simple" Master Elements which do not require any special
+     * handling.
+     */
     template <typename... Types>
     void readMasterElement(BitReader &reader, ElementId id, Types &...members) {
       return readMasterElement(reader, id, {wrapMemberReader(members)...});
@@ -409,6 +496,14 @@ namespace bml::ebml {
       return std::make_pair(T::ID, [&member](BitWriter &writer) { bml::write(writer, member); });
     }
 
+    /**
+     * Writes the Master Element with the given ID to the given bit writer and all its members given.
+     *
+     * The variadic template parameters whould be references to the members themselves.
+     *
+     * This is a convenience function for easier mapping of "simple" Master Elements which do not require any special
+     * handling.
+     */
     template <typename... Types>
     void writeMasterElement(BitWriter &writer, ElementId id, const Types &...members) {
       return writeMasterElement(writer, id, {wrapMemberWriter(members)...});

@@ -107,7 +107,6 @@ namespace bml {
     template <typename T>
     concept MemberMapper = requires(T obj) {
       typename T::object_type;
-      typename T::member_type;
 
       obj(std::declval<BitReader &>(), std::declval<typename T::object_type &>());
       obj(std::declval<BitWriter &>(), std::declval<const typename T::object_type &>());

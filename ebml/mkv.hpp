@@ -4,9 +4,17 @@
 
 #include <array>
 
+/**
+ * Types for reading/writing the container structure of the Matroska (MKV) media container format.
+ *
+ * See: https://www.matroska.org/technical/elements.html
+ */
 namespace bml::ebml::mkv {
 
   namespace detail {
+    /**
+     * Base type for all Binary Elements storing an UUID.
+     */
     struct BaseUUIDElement : public bml::ebml::detail::BaseSimpleElement<std::array<std::byte, 16>> {
       static constexpr auto NUM_BYTES = 16_bytes;
 
@@ -20,6 +28,9 @@ namespace bml::ebml::mkv {
       void writeValue(BitWriter &writer, ElementId id) const;
     };
 
+    /**
+     * Base type for all Block Element types to provide common read/write functionality.
+     */
     struct BaseBlockElement : MasterElement {
       ByteCount dataSize;
       std::vector<std::byte> data;
@@ -907,14 +918,31 @@ namespace bml::ebml::mkv {
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
   };
 
+  /**
+   * Container for a whole Matroska stream/file.
+   */
   struct Matroska {
     EBMLHeader header;
     Segment segment;
+    /** Whether the track data was read and thus can be written back. */
     bool hasData = false;
 
     constexpr auto operator<=>(const Matroska &) const noexcept = default;
 
+    /**
+     * Reads the whole Matroska container from the underlying input.
+     *
+     * The optional boolean parameter readData determines whether the track data should be read (e.g. for writing back
+     * or media processing) or not (e.g. for container analysis only), in which case only the block sizes are read.
+     */
     void read(BitReader &reader, bool readData = false);
+
+    /**
+     * Writes the whole Matroska container to the underlying output.
+     *
+     * NOTE: Attempting to write a Matroska object without data (hasData is false) will result in an exception being
+     * thrown.
+     */
     void write(BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Matroska, header, segment)

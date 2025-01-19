@@ -9,7 +9,7 @@
 #include <string>
 
 static void printHelp() {
-  std::cout << "Usage: <application> [options] <MKV/WEBM file>" << std::endl;
+  std::cout << "Usage: <application> [options] <MKV file>" << std::endl;
   std::cout << "The following options are available:" << std::endl;
   std::cout << "-h, --help      Print this help and exit" << std::endl;
   std::cout << "-y, --yaml      Print the media structure as YAML document" << std::endl;

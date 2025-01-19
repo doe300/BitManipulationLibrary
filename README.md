@@ -3,6 +3,9 @@
 The BitManipulationLibrary (short: bml) is a collection of types and functions for easy access to binary data structures (e.g. binary formats), featuring
 easy reading/writing of binary representations as (custom or standard-library) C++ objects.
 
+This project also contains implementations of the base functionality to access binary data for selected binary formats:
+- [EBML/MKV](#Extended-Binary-Markup-Language)
+
 The library is built with [CMake](https://cmake.org/) and requires a C++20 compliant compiler to work (e.g. GCC 14.2+).
 
 ## Type-mapped Representation
@@ -30,3 +33,9 @@ The `BitReader` and `BitWriter` can wrap byte streams of different sources/sinks
 > NOTE: The BitReader and BitWriter read/write data as big endian/MSB first.
 - The `types.hpp` header contains an assortment of useful classes for representing binary-mapped data to use directly or wrap in user-defined mapping types.
 - The `binary_map.hpp` header contains an assortment of predefined mapping functions and functor types to use directly or wrap in compound mappers (e.g. `mapCompound`) to map predefined or user-defined types.
+
+# Additional libraries
+## Extended Binary Markup Language
+The Extended Binary Markup Language (EBML, [RFC 8794](https://www.rfc-editor.org/rfc/rfc8794.html)) is the base file format used for the [Matroska (MKV)](https://www.matroska.org/technical/elements.html) media container format.
+A library for reading and writing EBML-based container formats can be found in the `ebml/` folder and is toggled via the `BML_BUILD_EBML` CMake variable. The library supports reading and writing of the the base EBML header as well as Matroska media containers.
+Additionally, the tool `mkv_parser` can be used to quickly dump the contents of a Matroksa (MKV) file, optionally in YAML format.
