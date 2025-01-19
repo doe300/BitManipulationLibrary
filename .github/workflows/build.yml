@@ -25,7 +25,7 @@ jobs:
             c_compiler: gcc
           - os: windows-latest
             c_compiler: clang
-          - os: ubuntu-24.04
+          - os: ubuntu-latest
             c_compiler: cl
           - os: macos-latest
             c_compiler: cl

@@ -206,7 +206,7 @@ namespace bml::ebml {
   template <ElementId Id, typename T = float, T Default = T{0.0}>
   struct FloatElement : public detail::BaseSimpleElement<T> {
     static constexpr ElementId ID = Id;
-    static constexpr uintmax_t DEFAULT = Default;
+    static constexpr T DEFAULT = Default;
     static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, ByteCount{sizeof(T)}); }
 
     constexpr FloatElement() noexcept : detail::BaseSimpleElement<T>(DEFAULT) {}

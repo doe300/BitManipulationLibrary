@@ -92,11 +92,12 @@ namespace bml::detail {
     }
 #ifdef _MSC_VER
     std::wstring tmp(val.size() * 2U, L'\0');
-    auto numChars = MultiByteToWideChar(CP_UTF8, 0, reinterpret_cast<const char *>(val.data()), val.size(),
-                                        &tmp.front(), tmp.size());
+    auto numChars = MultiByteToWideChar(CP_UTF8, 0, reinterpret_cast<const char *>(val.data()),
+                                        static_cast<int>(val.size()), &tmp.front(), static_cast<int>(tmp.size()));
     tmp.resize(numChars);
     std::string result(val.size() * 2U, '\0');
-    numChars = WideCharToMultiByte(CP_ACP, 0, tmp.data(), tmp.size(), &result.front(), result.size(), nullptr, nullptr);
+    numChars = WideCharToMultiByte(CP_ACP, 0, tmp.data(), static_cast<int>(tmp.size()), &result.front(),
+                                   static_cast<int>(result.size()), nullptr, nullptr);
     result.resize(numChars);
     return os << '\'' << result << '\'';
 #else

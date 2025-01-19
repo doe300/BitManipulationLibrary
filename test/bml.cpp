@@ -402,9 +402,15 @@ public:
     checkPrint(42.0, "42");
     checkPrint("Foo Bar"s, "'Foo Bar'");
     checkPrint(u8"Foo Bar ⠁⠃"s, "'Foo Bar ⠁⠃'");
-    checkPrint(std::chrono::utc_seconds{}, "1970-01-01 00:00:00.000000000");
     checkPrint(std::optional<int>{}, "null");
     checkPrint(std::optional<int>{15}, "15");
+
+    {
+      // Some systems append the nanoseconds, others don't
+      std::stringstream ss;
+      bml::yaml::print(ss, bml::yaml::Options{}, std::chrono::utc_seconds{});
+      TEST_ASSERT(ss.str().starts_with("1970-01-01 00:00:00"));
+    }
   }
 
   void testObject() {

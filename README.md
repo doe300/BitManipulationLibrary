@@ -37,5 +37,7 @@ The `BitReader` and `BitWriter` can wrap byte streams of different sources/sinks
 # Additional libraries
 ## Extended Binary Markup Language
 The Extended Binary Markup Language (EBML, [RFC 8794](https://www.rfc-editor.org/rfc/rfc8794.html)) is the base file format used for the [Matroska (MKV)](https://www.matroska.org/technical/elements.html) media container format.
+
 A library for reading and writing EBML-based container formats can be found in the `ebml/` folder and is toggled via the `BML_BUILD_EBML` CMake variable. The library supports reading and writing of the the base EBML header as well as Matroska media containers.
+
 Additionally, the tool `mkv_parser` can be used to quickly dump the contents of a Matroksa (MKV) file, optionally in YAML format.
