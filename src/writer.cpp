@@ -141,6 +141,7 @@ namespace bml {
   BitWriter::BitWriter(ByteConsumer &&consumer) : impl(std::make_unique<ByteConsumerImpl>(std::move(consumer))) {}
   BitWriter::BitWriter(ByteRange range) : impl(std::make_unique<ByteWriteRangeImpl>(range)) {}
   BitWriter::BitWriter(std::ostream &os) : impl(std::make_unique<ByteOutputStreamImpl>(os)) {}
+  BitWriter::BitWriter(BitWriter &&other) noexcept : impl(std::move(other.impl)) { other.impl.reset(); }
   BitWriter::~BitWriter() noexcept = default;
 
   BitWriter &BitWriter::operator=(BitWriter &&other) noexcept {

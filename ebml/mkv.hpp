@@ -24,7 +24,7 @@ namespace bml::ebml::mkv {
       std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
 
     protected:
-      void readValue(BitReader &reader, ElementId id);
+      void readValue(BitReader &reader, ElementId id, const ReadOptions &options);
       void writeValue(BitWriter &writer, ElementId id) const;
     };
 
@@ -41,7 +41,7 @@ namespace bml::ebml::mkv {
       std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
 
     protected:
-      void readValue(bml::BitReader &reader, ElementId id, bool readData = false);
+      void readValue(bml::BitReader &reader, ElementId id, const ReadOptions &options);
       void writeValue(bml::BitWriter &writer, ElementId id) const;
     };
   } // namespace detail
@@ -62,7 +62,7 @@ namespace bml::ebml::mkv {
       return *this;
     }
 
-    void read(BitReader &reader) { BaseUUIDElement::readValue(reader, ID); }
+    void read(BitReader &reader, const ReadOptions &options) { BaseUUIDElement::readValue(reader, ID, options); }
     void write(BitWriter &writer) const { BaseUUIDElement::writeValue(writer, ID); }
   };
 
@@ -78,7 +78,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Seek &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Seek, crc32, seekID, seekPosition, voidElements)
@@ -92,7 +92,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const SeekHead &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(SeekHead, crc32, seeks, voidElements)
@@ -108,7 +108,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ChapterTranslate &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ChapterTranslate, crc32, chapterTranslateID, chapterTranslateCodec, chapterTranslateEditionUIDs,
@@ -136,7 +136,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Info &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Info, crc32, segmentUUID, segmentFilename, prevUUID, prevFilename, nextUUID, nextFilename,
@@ -153,7 +153,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const BlockMore &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(BlockMore, crc32, blockAdditional, blockAddID, voidElements)
@@ -167,7 +167,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const BlockAdditions &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(BlockAdditions, crc32, blockMores, voidElements)
@@ -177,14 +177,14 @@ namespace bml::ebml::mkv {
   struct SimpleBlock : detail::BaseBlockElement {
     static constexpr ElementId ID{0xA3};
 
-    void read(BitReader &reader, bool readData = false) { readValue(reader, ID, readData); }
+    void read(BitReader &reader, const ReadOptions &options = {}) { readValue(reader, ID, options); }
     void write(BitWriter &writer) const { writeValue(writer, ID); }
   };
 
   struct Block : detail::BaseBlockElement {
     static constexpr ElementId ID{0xA1};
 
-    void read(BitReader &reader, bool readData = false) { readValue(reader, ID, readData); }
+    void read(BitReader &reader, const ReadOptions &options = {}) { readValue(reader, ID, options); }
     void write(BitWriter &writer) const { writeValue(writer, ID); }
   };
 
@@ -201,7 +201,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const BlockGroup &) const noexcept = default;
 
-    void read(bml::BitReader &reader, bool readData = false);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(BlockGroup, crc32, block, blockAdditions, blockDuration, referencePriority, referenceBlocks,
@@ -220,7 +220,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Cluster &) const noexcept = default;
 
-    void read(bml::BitReader &reader, bool readData = false);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     friend std::ostream &operator<<(std::ostream &os, const Cluster &cluster);
@@ -237,7 +237,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const BlockAdditionMapping &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(BlockAdditionMapping, crc32, blockAddIDValue, blockAddIDName, blockAddIDType, blockAddIDExtraData,
@@ -254,7 +254,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const TrackTranslate &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(TrackTranslate, crc32, trackTranslateTrackID, trackTranslateCodec, trackTranslateEditionUIDs,
@@ -278,7 +278,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const MasteringMetadata &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(MasteringMetadata, crc32, primaryRChromaticityX, primaryRChromaticityY, primaryGChromaticityX,
@@ -307,7 +307,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Colour &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Colour, crc32, matrixCoefficients, bitsPerChannel, chromaSubsamplingHorz, chromaSubsamplingVert,
@@ -327,7 +327,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Projection &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Projection, crc32, projectionType, projectionPrivate, projectionPoseYaw, projectionPosePitch,
@@ -358,7 +358,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Video &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Video, crc32, flagInterlaced, fieldOrder, stereoMode, alphaMode, oldStereoMode, pixelWidth,
@@ -378,7 +378,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Audio &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Audio, crc32, samplingFrequency, outputSamplingFrequency, channels, bitDepth, emphasis,
@@ -394,7 +394,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const TrackPlane &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(TrackPlane, crc32, trackPlaneUID, trackPlaneType, voidElements)
@@ -408,7 +408,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const TrackCombinePlanes &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(TrackCombinePlanes, crc32, trackPlanes, voidElements)
@@ -422,7 +422,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const TrackJoinBlocks &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(TrackJoinBlocks, crc32, trackJoinUIDs, voidElements)
@@ -437,7 +437,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const TrackOperation &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(TrackOperation, crc32, trackCombinePlanes, trackJoinBlocks, voidElements)
@@ -452,7 +452,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ContentCompression &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ContentCompression, crc32, contentCompAlgo, contentCompSettings, voidElements)
@@ -466,7 +466,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ContentEncAESSettings &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ContentEncAESSettings, crc32, aESSettingsCipherMode, voidElements)
@@ -486,7 +486,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ContentEncryption &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ContentEncryption, crc32, contentEncAlgo, contentEncKeyID, contentEncAESSettings, contentSignature,
@@ -505,7 +505,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ContentEncoding &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ContentEncoding, crc32, contentEncodingOrder, contentEncodingScope, contentEncodingType,
@@ -520,7 +520,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ContentEncodings &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ContentEncodings, crc32, contentEncodings, voidElements)
@@ -566,7 +566,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const TrackEntry &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(TrackEntry, crc32, trackNumber, trackUID, trackType, flagEnabled, flagDefault, flagForced,
@@ -585,7 +585,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Tracks &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Tracks, crc32, trackEntries, voidElements)
@@ -599,7 +599,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const CueReference &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(CueReference, crc32, cueRefTime, voidElements)
@@ -619,7 +619,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const CueTrackPositions &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(CueTrackPositions, crc32, cueTrack, cueClusterPosition, cueRelativePosition, cueDuration,
@@ -635,7 +635,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const CuePoint &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(CuePoint, crc32, cueTime, cueTrackPositions, voidElements)
@@ -649,7 +649,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Cues &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Cues, crc32, cuePoints, voidElements)
@@ -667,7 +667,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const AttachedFile &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(AttachedFile, crc32, fileDescription, fileName, fileMediaType, fileData, fileUID, voidElements)
@@ -681,7 +681,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Attachments &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Attachments, crc32, attachedFiles, voidElements)
@@ -696,7 +696,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const EditionDisplay &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(EditionDisplay, crc32, editionString, editionLanguageIETFs, voidElements)
@@ -710,7 +710,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ChapterTrack &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ChapterTrack, crc32, chapterTrackUIDs, voidElements)
@@ -727,7 +727,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ChapterDisplay &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ChapterDisplay, crc32, chapString, chapLanguages, chapLanguageBCP47s, chapCountries, voidElements)
@@ -742,7 +742,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ChapProcessCommand &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ChapProcessCommand, crc32, chapProcessTime, chapProcessData, voidElements)
@@ -758,7 +758,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ChapProcess &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ChapProcess, crc32, chapProcessCodecID, chapProcessPrivate, chapProcessCommands, voidElements)
@@ -784,7 +784,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const ChapterAtom &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(ChapterAtom, crc32, chapterUID, chapterStringUID, chapterTimeStart, chapterTimeEnd,
@@ -806,7 +806,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const EditionEntry &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(EditionEntry, crc32, editionUID, editionFlagHidden, editionFlagDefault, editionFlagOrdered,
@@ -821,7 +821,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Chapters &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Chapters, crc32, editionEntries, voidElements)
@@ -840,7 +840,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Targets &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Targets, crc32, targetTypeValue, targetType, tagTrackUIDs, tagEditionUIDs, tagChapterUIDs,
@@ -860,7 +860,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const SimpleTag &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(SimpleTag, crc32, tagName, tagLanguage, tagLanguageBCP47, tagDefault, tagString, tagBinary,
@@ -876,7 +876,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Tag &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Tag, crc32, targets, simpleTags, voidElements)
@@ -890,7 +890,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Tags &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Tags, crc32, tags, voidElements)
@@ -911,7 +911,7 @@ namespace bml::ebml::mkv {
 
     constexpr auto operator<=>(const Segment &) const noexcept = default;
 
-    void read(bml::BitReader &reader, bool readData = false);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Segment, crc32, seekHeads, info, tracks, cues, chapters, clusters, attachments, tags, voidElements)
@@ -931,11 +931,8 @@ namespace bml::ebml::mkv {
 
     /**
      * Reads the whole Matroska container from the underlying input.
-     *
-     * The optional boolean parameter readData determines whether the track data should be read (e.g. for writing back
-     * or media processing) or not (e.g. for container analysis only), in which case only the block sizes are read.
      */
-    void read(BitReader &reader, bool readData = false);
+    void read(BitReader &reader, const ReadOptions &options);
 
     /**
      * Writes the whole Matroska container to the underlying output.

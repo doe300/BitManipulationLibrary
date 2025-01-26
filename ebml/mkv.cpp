@@ -19,7 +19,7 @@ namespace bml::ebml::mkv {
       return os << formatUUID(element.value);
     }
 
-    void BaseUUIDElement::readValue(BitReader &reader, ElementId id) {
+    void BaseUUIDElement::readValue(BitReader &reader, ElementId id, const ReadOptions &) {
       auto numBytes = ebml::detail::readElementHeader(reader, id);
       if (numBytes != NUM_BYTES) {
         throw std::invalid_argument("UUID element with ID '" + toHexString(static_cast<uintmax_t>(id)) +
@@ -37,10 +37,10 @@ namespace bml::ebml::mkv {
       return bml::yaml::print(os, options, formatUUID(value));
     }
 
-    void BaseBlockElement::readValue(BitReader &reader, ElementId id, bool readData) {
+    void BaseBlockElement::readValue(BitReader &reader, ElementId id, const ReadOptions &options) {
       dataSize = ebml::detail::readElementHeader(reader, id);
 
-      if (readData) {
+      if (options.readMediaData) {
         data.resize(dataSize.num);
         reader.readBytesInto(std::span{data});
       } else {
@@ -59,24 +59,20 @@ namespace bml::ebml::mkv {
         os << "data:";
         return bml::yaml::print(os, options, data);
       }
-      return os << "dataSize:" << dataSize.toString();
+      return os << "dataSize: " << dataSize.num;
     }
   } // namespace detail
 
-  void Segment::read(bml::BitReader &reader, bool readData) {
+  void Segment::read(bml::BitReader &reader, const ReadOptions &options) {
     using namespace bml::ebml::detail;
-    readMasterElement(reader, ID,
+    readMasterElement(reader, ID, *this, options,
                       {wrapMemberReader(crc32), wrapMemberReader(seekHeads), wrapMemberReader(info),
                        wrapMemberReader(tracks), wrapMemberReader(cues), wrapMemberReader(chapters),
-                       std::make_pair(Cluster::ID,
-                                      [&](BitReader &r) {
-                                        Cluster tmp{};
-                                        tmp.read(r, readData);
-                                        clusters.push_back(std::move(tmp));
-                                      }),
-                       wrapMemberReader(attachments), wrapMemberReader(tags), wrapMemberReader(voidElements)},
+                       wrapMemberReader(clusters), wrapMemberReader(attachments), wrapMemberReader(tags),
+                       wrapMemberReader(voidElements)},
                       {EBMLHeader::ID, Segment::ID});
   }
+
   void Segment::write(BitWriter &writer) const {
     using namespace bml::ebml::detail;
     writeMasterElement(writer, ID,
@@ -89,23 +85,11 @@ namespace bml::ebml::mkv {
   BML_YAML_DEFINE_PRINT(Segment, crc32, seekHeads, info, tracks, cues, chapters, clusters, attachments, tags,
                         voidElements)
 
-  void Cluster::read(bml::BitReader &reader, bool readData) {
+  void Cluster::read(bml::BitReader &reader, const ReadOptions &options) {
     using namespace bml::ebml::detail;
-    readMasterElement(reader, ID,
+    readMasterElement(reader, ID, *this, options,
                       {wrapMemberReader(crc32), wrapMemberReader(timestamp), wrapMemberReader(position),
-                       wrapMemberReader(prevSize),
-                       std::make_pair(SimpleBlock::ID,
-                                      [&](BitReader &r) {
-                                        SimpleBlock tmp{};
-                                        tmp.read(r, readData);
-                                        simpleBlocks.push_back(std::move(tmp));
-                                      }),
-                       std::make_pair(BlockGroup::ID,
-                                      [&](BitReader &r) {
-                                        BlockGroup tmp{};
-                                        tmp.read(r, readData);
-                                        blockGroups.push_back(std::move(tmp));
-                                      }),
+                       wrapMemberReader(prevSize), wrapMemberReader(simpleBlocks), wrapMemberReader(blockGroups),
                        wrapMemberReader(voidElements)},
                       {EBMLHeader::ID, Segment::ID, SeekHead::ID, Info::ID, Tracks::ID, Cues::ID, Chapters::ID,
                        Cluster::ID, Attachments::ID, Tags::ID});
@@ -135,32 +119,15 @@ namespace bml::ebml::mkv {
     return os << '}';
   }
 
-  void BlockGroup::read(bml::BitReader &reader, bool readData) {
-    using namespace bml::ebml::detail;
-    readMasterElement(reader, ID,
-                      {wrapMemberReader(crc32),
-                       std::make_pair(Block::ID, [&](BitReader &r) { block.read(r, readData); }),
-                       wrapMemberReader(blockAdditions), wrapMemberReader(blockDuration),
-                       wrapMemberReader(referencePriority), wrapMemberReader(referenceBlocks),
-                       wrapMemberReader(codecState), wrapMemberReader(discardPadding), wrapMemberReader(voidElements)});
-  }
-
-  void BlockGroup::write(BitWriter &writer) const {
-    using namespace bml::ebml::detail;
-    writeMasterElement(writer, ID,
-                       {wrapMemberWriter(crc32), wrapMemberWriter(block), wrapMemberWriter(blockAdditions),
-                        wrapMemberWriter(blockDuration), wrapMemberWriter(referencePriority),
-                        wrapMemberWriter(referenceBlocks), wrapMemberWriter(codecState),
-                        wrapMemberWriter(discardPadding), wrapMemberWriter(voidElements)});
-  }
-
+  BML_EBML_DEFINE_IO(BlockGroup, crc32, block, blockAdditions, blockDuration, referencePriority, referenceBlocks,
+                     codecState, discardPadding, voidElements)
   BML_YAML_DEFINE_PRINT(BlockGroup, crc32, block, blockAdditions, blockDuration, referencePriority, referenceBlocks,
                         codecState, discardPadding, voidElements)
 
-  void Matroska::read(BitReader &reader, bool readData) {
-    header.read(reader);
-    segment.read(reader);
-    hasData = readData;
+  void Matroska::read(BitReader &reader, const ReadOptions &options) {
+    header.read(reader, options);
+    segment.read(reader, options);
+    hasData = options.readMediaData;
   }
 
   void Matroska::write(BitWriter &writer) const {

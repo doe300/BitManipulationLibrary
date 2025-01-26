@@ -249,6 +249,7 @@ namespace bml {
   BitReader::BitReader(ByteGenerator &&generator) : impl(std::make_unique<ByteGeneratorImpl>(std::move(generator))) {}
   BitReader::BitReader(ByteRange range) : impl(std::make_unique<ByteReadRangeImpl>(range)) {}
   BitReader::BitReader(std::istream &is) : impl(std::make_unique<ByteInputStreamImpl>(is)) {}
+  BitReader::BitReader(BitReader &&other) noexcept : impl(std::move(other.impl)) { other.impl.reset(); }
   BitReader::~BitReader() noexcept = default;
 
   BitReader &BitReader::operator=(BitReader &&other) noexcept {

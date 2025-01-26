@@ -27,11 +27,34 @@ namespace bml::ebml {
 
   using Date = std::chrono::utc_time<std::chrono::nanoseconds>;
 
+  struct ReadOptions {
+    /**
+     * If set to true, will validate CRC-32 Elements in Master Elements (if present) and throw an error if the
+     * successive Elements inside the Master Element do not match the CRC-32.
+     */
+    bool validateCRC32 = false;
+
+    /**
+     * If set to true, will read the binary blob of Elements containing media data (e.g. Matroska Blocks). Otherwise
+     * will only read the media data sizes.
+     *
+     * NOTE: Consider the memory footprint when reading the whole media data into RAM!
+     *
+     * NOTE: When media data elements are read without their contents, they cannot be written back. These objects can
+     * only be used for displaying or container analysis.
+     */
+    bool readMediaData = false;
+  };
+
   inline namespace literals {
     constexpr ElementId operator""_id(unsigned long long int value) noexcept { return ElementId{value}; }
   } // namespace literals
 
   inline namespace concepts {
+    template <typename Type>
+    concept ReadableWithOptions =
+        requires(Type obj, BitReader reader, const ReadOptions &options) { obj.read(reader, options); };
+
     template <typename Type>
     concept HasEBMLID = requires() {
       { Type::ID } -> std::convertible_to<ElementId>;
@@ -41,8 +64,8 @@ namespace bml::ebml {
      * Concept checking whether the given type is a fully supported EBML Element type.
      */
     template <typename Type>
-    concept EBMLElement =
-        Readable<Type> && Writeable<Type> && Printable<Type> && Skipable<Type> && Copyable<Type> && HasEBMLID<Type>;
+    concept EBMLElement = ReadableWithOptions<Type> && Writeable<Type> && Printable<Type> && Skipable<Type> &&
+                          Copyable<Type> && HasEBMLID<Type>;
   } // namespace concepts
 
   namespace detail {
@@ -155,7 +178,7 @@ namespace bml::ebml {
       return *this;
     }
 
-    void read(BitReader &reader) { readValue(reader, ID, DEFAULT); }
+    void read(bml::BitReader &reader, const ReadOptions & = {}) { readValue(reader, ID, DEFAULT); }
     void write(BitWriter &writer) const { writeValue(writer, ID, DEFAULT); }
   };
 
@@ -177,7 +200,7 @@ namespace bml::ebml {
       return *this;
     }
 
-    void read(BitReader &reader) { this->readValue(reader, ID, DEFAULT); }
+    void read(bml::BitReader &reader, const ReadOptions & = {}) { this->readValue(reader, ID, DEFAULT); }
     void write(BitWriter &writer) const { this->writeValue(writer, ID, DEFAULT); }
   };
 
@@ -199,7 +222,7 @@ namespace bml::ebml {
       return *this;
     }
 
-    void read(BitReader &reader) { this->readValue(reader, ID, DEFAULT); }
+    void read(bml::BitReader &reader, const ReadOptions & = {}) { this->readValue(reader, ID, DEFAULT); }
     void write(BitWriter &writer) const { this->writeValue(writer, ID, DEFAULT); }
   };
 
@@ -221,7 +244,7 @@ namespace bml::ebml {
       return *this;
     }
 
-    void read(BitReader &reader) { this->readValue(reader, ID, DEFAULT); }
+    void read(bml::BitReader &reader, const ReadOptions & = {}) { this->readValue(reader, ID, DEFAULT); }
     void write(BitWriter &writer) const { this->writeValue(writer, ID, DEFAULT); }
   };
 
@@ -243,7 +266,7 @@ namespace bml::ebml {
       return *this;
     }
 
-    void read(BitReader &reader) { readValue(reader, ID, detail::DATE_EPOCH); }
+    void read(bml::BitReader &reader, const ReadOptions & = {}) { readValue(reader, ID, detail::DATE_EPOCH); }
     void write(BitWriter &writer) const { writeValue(writer, ID, detail::DATE_EPOCH); }
   };
 
@@ -266,7 +289,7 @@ namespace bml::ebml {
       return *this;
     }
 
-    void read(BitReader &reader) { readValue(reader, ID, DEFAULT); }
+    void read(bml::BitReader &reader, const ReadOptions & = {}) { readValue(reader, ID, DEFAULT); }
     void write(BitWriter &writer) const { writeValue(writer, ID, DEFAULT); }
   };
 
@@ -288,7 +311,7 @@ namespace bml::ebml {
       return *this;
     }
 
-    void read(BitReader &reader) { this->readValue(reader, ID, DEFAULT); }
+    void read(bml::BitReader &reader, const ReadOptions & = {}) { this->readValue(reader, ID, DEFAULT); }
     void write(BitWriter &writer) const { this->writeValue(writer, ID, DEFAULT); }
   };
 
@@ -305,11 +328,32 @@ namespace bml::ebml {
       return *this;
     }
 
-    void read(BitReader &reader) { readValue(reader, ID, {}); }
+    void read(bml::BitReader &reader, const ReadOptions & = {}) { readValue(reader, ID, {}); }
     void write(BitWriter &writer) const { writeValue(writer, ID, {}); }
   };
 
-  using CRC32 = UnsignedIntElement<0xBF_id>;
+  struct CRC32 : public detail::BaseSimpleElement<uint32_t> {
+    static constexpr ElementId ID = 0xBF_id;
+
+    static constexpr BitCount minNumBits() { return detail::calcElementSize(ID, 4_bytes); }
+    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, 4_bytes); }
+
+    constexpr CRC32() noexcept : detail::BaseSimpleElement<uint32_t>() {}
+    explicit constexpr CRC32(uint32_t val) noexcept : detail::BaseSimpleElement<uint32_t>(val) {}
+
+    constexpr BitCount numBits() const noexcept { return detail::calcElementSize(ID, 4_bytes); }
+
+    CRC32 &operator=(uint32_t val) {
+      this->value = val;
+      return *this;
+    }
+
+    void read(bml::BitReader &reader, const ReadOptions & = {});
+    void write(BitWriter &writer) const;
+
+    friend std::ostream &operator<<(std::ostream &os, const CRC32 &element);
+    std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
+  };
 
   /**
    * Void Element for skipped/ignored data.
@@ -324,7 +368,7 @@ namespace bml::ebml {
 
     constexpr auto operator<=>(const Void &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions & = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(Void, skipBytes)
@@ -358,7 +402,7 @@ namespace bml::ebml {
 
     constexpr auto operator<=>(const DocTypeExtension &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(DocTypeExtension, crc32, docTypeExtensionName, docTypeExtensionVersion, voidElements)
@@ -379,7 +423,7 @@ namespace bml::ebml {
 
     constexpr auto operator<=>(const EBMLHeader &) const noexcept = default;
 
-    void read(bml::BitReader &reader);
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
     BML_DEFINE_PRINT(EBMLHeader, crc32, version, readVersion, maxIDLength, maxSizeLength, docType, docTypeVersion,
@@ -390,11 +434,13 @@ namespace bml::ebml {
 /**
  * Defines the implementations of the member functions to read/write the Master Element with the following signatures:
  *
- * void printYAML(BitReader &);
+ * void printYAML(BitReader &, const ReadOptions &);
  * void write(bml::BitWriter &writer) const;
  */
 #define BML_EBML_DEFINE_IO(Type, ...)                                                                                  \
-  void Type ::read(bml::BitReader &reader) { bml::ebml::detail::readMasterElement(reader, ID, __VA_ARGS__); }          \
+  void Type ::read(bml::BitReader &reader, const ReadOptions &options) {                                               \
+    bml::ebml::detail::readMasterElement(reader, ID, *this, options, __VA_ARGS__);                                     \
+  }                                                                                                                    \
   void Type ::write(bml::BitWriter &writer) const { bml::ebml::detail::writeMasterElement(writer, ID, __VA_ARGS__); }
 
   /**
@@ -429,8 +475,8 @@ namespace bml::ebml {
      * function. See https://www.rfc-editor.org/rfc/rfc8794.html#section-6.2 for which Element IDs need to be passed
      * into this parameter.
      */
-    void readMasterElement(BitReader &reader, ElementId id,
-                           const std::map<ElementId, std::function<void(BitReader &)>> &members,
+    void readMasterElement(BitReader &reader, ElementId id, MasterElement &master, const ReadOptions &options,
+                           const std::map<ElementId, std::function<void(BitReader &, const ReadOptions &)>> &members,
                            const std::set<ElementId> &terminatingElementIds = {});
 
     /**
@@ -442,24 +488,34 @@ namespace bml::ebml {
                             const std::vector<std::pair<ElementId, std::function<void(BitWriter &)>>> &members);
 
     template <typename T>
-    std::pair<ElementId, std::function<void(BitReader &)>> wrapMemberReader(T &member)
-      requires(Readable<T> && HasEBMLID<T>)
+    std::pair<ElementId, std::function<void(BitReader &, const ReadOptions &)>> wrapMemberReader(T &member)
+      requires(ReadableWithOptions<T> && HasEBMLID<T>)
     {
-      return std::make_pair(T::ID, [&member](BitReader &reader) { bml::read(reader, member); });
+      return std::make_pair(T::ID,
+                            [&member](BitReader &reader, const ReadOptions &options) { member.read(reader, options); });
     }
 
     template <typename T>
-    std::pair<ElementId, std::function<void(BitReader &)>> wrapMemberReader(std::optional<T> &member)
-      requires(Readable<T> && HasEBMLID<T>)
+    std::pair<ElementId, std::function<void(BitReader &, const ReadOptions &)>>
+    wrapMemberReader(std::optional<T> &member)
+      requires(ReadableWithOptions<T> && HasEBMLID<T>)
     {
-      return std::make_pair(T::ID, [&member](BitReader &reader) { member = bml::read<T>(reader); });
+      return std::make_pair(T::ID, [&member](BitReader &reader, const ReadOptions &options) {
+        T obj{};
+        obj.read(reader, options);
+        member = std::move(obj);
+      });
     }
 
     template <typename T>
-    std::pair<ElementId, std::function<void(BitReader &)>> wrapMemberReader(std::vector<T> &member)
-      requires(Readable<T> && HasEBMLID<T>)
+    std::pair<ElementId, std::function<void(BitReader &, const ReadOptions &)>> wrapMemberReader(std::vector<T> &member)
+      requires(ReadableWithOptions<T> && HasEBMLID<T>)
     {
-      return std::make_pair(T::ID, [&member](BitReader &reader) { member.push_back(bml::read<T>(reader)); });
+      return std::make_pair(T::ID, [&member](BitReader &reader, const ReadOptions &options) {
+        T obj{};
+        obj.read(reader, options);
+        member.push_back(std::move(obj));
+      });
     }
 
     /**
@@ -471,8 +527,9 @@ namespace bml::ebml {
      * handling.
      */
     template <typename... Types>
-    void readMasterElement(BitReader &reader, ElementId id, Types &...members) {
-      return readMasterElement(reader, id, {wrapMemberReader(members)...});
+    void readMasterElement(BitReader &reader, ElementId id, MasterElement &master, const ReadOptions &options,
+                           Types &...members) {
+      return readMasterElement(reader, id, master, options, {wrapMemberReader(members)...});
     }
 
     template <typename T>

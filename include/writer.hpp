@@ -47,7 +47,7 @@ namespace bml {
 
     // Disallow copying, since the different byte sinks might behave differently when being copied
     BitWriter(const BitWriter &) = delete;
-    BitWriter(BitWriter &&) noexcept = default;
+    BitWriter(BitWriter &&other) noexcept;
     ~BitWriter() noexcept;
 
     BitWriter &operator=(const BitWriter &) = delete;

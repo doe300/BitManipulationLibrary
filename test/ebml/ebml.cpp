@@ -13,8 +13,10 @@ struct TestDynamicElement final : MasterElement {
 
   constexpr auto operator<=>(const TestDynamicElement &) const noexcept = default;
 
-  void read(bml::BitReader &reader) {
-    bml::ebml::detail::readMasterElement(reader, ID, {bml::ebml::detail::wrapMemberReader(data)}, {ID});
+  void read(bml::BitReader &reader, const ReadOptions &options = {}) {
+    bml::ebml::detail::readMasterElement(
+        reader, ID, *this, options,
+        {bml::ebml::detail::wrapMemberReader(crc32), bml::ebml::detail::wrapMemberReader(data)}, {ID});
   }
 
   void write(bml::BitWriter &writer) const { bml::ebml::detail::writeMasterElement(writer, ID, data); }
@@ -34,6 +36,7 @@ public:
     TEST_ADD(TestBaseElements::testUtf8StringElement);
     TEST_ADD(TestBaseElements::testBinaryElement);
     TEST_ADD(TestBaseElements::testIDMismatch);
+    TEST_ADD(TestBaseElements::testCRC32Mismatch);
     TEST_ADD(TestBaseElements::testUnknownElement);
     TEST_ADD(TestBaseElements::testUnknownDataSize);
   }
@@ -257,6 +260,18 @@ public:
     TEST_ASSERT_EQUALS(0xD1F5C58AUL, elem.get());
   }
 
+  void testCRC32Mismatch() {
+    const auto DATA = toBytes({0x42, 0x81, 0x90, 0xBF, 0x84, 0xD1, 0xF5, 0xC5, 0x8A, 0x42, 0x83, 0x83, 0x46, 0x4F, 0x4F,
+                               0x42, 0x84, 0x81, 0x11});
+
+    bml::BitReader reader{DATA};
+    bml::ebml::ReadOptions options{};
+    options.validateCRC32 = true;
+
+    DocTypeExtension ext{};
+    TEST_THROWS(ext.read(reader, options), std::runtime_error);
+  }
+
   void testUnknownElement() {
     DocTypeExtension ext{};
 
@@ -269,17 +284,23 @@ public:
   }
 
   void testUnknownDataSize() {
-    const auto DATA = toBytes({0xF0, 0xFF, 0xEC, 0x83, 0x00, 0x00, 0x00, 0xEC, 0x84, 0x00, 0x00, 0x00, 0x00, 0xEC,
-                               0x85, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                               0x00, 0x00, 0xEC, 0x87, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x88, 0x00,
-                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xFF, 0xEC, 0x80});
+    const auto DATA = toBytes({0xF0, 0xFF, 0xBF, 0x84, 0x1B, 0xE4, 0xC4, 0x81, 0xEC, 0x83, 0x00, 0x00, 0x00, 0xEC, 0x84,
+                               0x00, 0x00, 0x00, 0x00, 0xEC, 0x85, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x88, 0x00, 0x00,
+                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x87, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                               0xEC, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xFF, 0xEC, 0x80});
+
+    ReadOptions options{};
+    options.validateCRC32 = true;
 
     // Terminated by end of stream
     {
-      bml::BitReader reader{std::span{DATA}.subspan(0, DATA.size() - 14U)};
-      auto elem = bml::read<TestDynamicElement>(reader);
+      bml::BitReader reader{std::span{DATA}.subspan(0, DATA.size() - 4U)};
+      TestDynamicElement elem{};
+      elem.read(reader, options);
 
-      TEST_ASSERT_EQUALS(5U, elem.data.size());
+      TEST_ASSERT(elem.crc32);
+      TEST_ASSERT_EQUALS(0x81C4E41BU, elem.crc32->get());
+      TEST_ASSERT_EQUALS(6U, elem.data.size());
       TEST_ASSERT_EQUALS(5_bytes, elem.data[2].skipBytes);
       TEST_ASSERT_FALSE(reader.hasMoreBytes());
     }
@@ -287,11 +308,25 @@ public:
     // Terminated by other element
     {
       bml::BitReader reader{std::span{DATA}};
-      auto elem = bml::read<TestDynamicElement>(reader);
+      TestDynamicElement elem{};
+      elem.read(reader, options);
 
+      TEST_ASSERT(elem.crc32);
+      TEST_ASSERT_EQUALS(0x81C4E41BU, elem.crc32->get());
       TEST_ASSERT_EQUALS(6U, elem.data.size());
       TEST_ASSERT_EQUALS(5_bytes, elem.data[2].skipBytes);
       TEST_ASSERT(reader.hasMoreBytes());
+    }
+
+    // Empty due to end of stream
+    {
+      bml::BitReader reader{std::span{DATA}.subspan(0, 2)};
+      TestDynamicElement elem{};
+      elem.read(reader, options);
+
+      TEST_ASSERT_FALSE(elem.crc32);
+      TEST_ASSERT(elem.data.empty());
+      TEST_ASSERT_FALSE(reader.hasMoreBytes());
     }
   }
 
@@ -339,9 +374,9 @@ public:
 
   void testCRC32() {
     CRC32 elem{};
-    elem = 0xD1F5C58A;
+    elem = 0x8AC5F5D1;
 
-    testElement(elem, {0xBF, 0x84, 0xD1, 0xF5, 0xC5, 0x8A}, "3522545034");
+    testElement(elem, {0xBF, 0x84, 0xD1, 0xF5, 0xC5, 0x8A}, "0x8ac5f5d1");
   }
 
   void testVoid() {
@@ -368,6 +403,7 @@ public:
 
   void testEBMLHeader() {
     EBMLHeader header{};
+    header.crc32 = 0xF0C83F84U;
     header.version = 2U;
     header.readVersion = 1U;
     header.maxIDLength = 4U;
@@ -376,10 +412,11 @@ public:
     header.docTypeVersion = 4U;
     header.docTypeReadVersion = 2U;
 
-    testElement(header, {0x1a, 0x45, 0xdf, 0xa3, 0xa3, 0x42, 0x86, 0x81, 0x02, 0x42, 0xf7, 0x81, 0x01, 0x42,
-                         0xf2, 0x81, 0x04, 0x42, 0xf3, 0x81, 0x08, 0x42, 0x82, 0x88, 0x6d, 0x61, 0x74, 0x72,
-                         0x6f, 0x73, 0x6b, 0x61, 0x42, 0x87, 0x81, 0x04, 0x42, 0x85, 0x81, 0x02},
-                R"(version: 2
+    testElement(header, {0x1a, 0x45, 0xdf, 0xa3, 0xa9, 0xBF, 0x84, 0x84, 0x3f, 0xc8, 0xf0, 0x42, 0x86, 0x81, 0x02, 0x42,
+                         0xf7, 0x81, 0x01, 0x42, 0xf2, 0x81, 0x04, 0x42, 0xf3, 0x81, 0x08, 0x42, 0x82, 0x88, 0x6d, 0x61,
+                         0x74, 0x72, 0x6f, 0x73, 0x6b, 0x61, 0x42, 0x87, 0x81, 0x04, 0x42, 0x85, 0x81, 0x02},
+                R"(crc32: 0xf0c83f84
+version: 2
 readVersion: 1
 maxIDLength: 4
 maxSizeLength: 8

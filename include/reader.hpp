@@ -48,7 +48,7 @@ namespace bml {
 
     // Disallow copying, since the different byte sources might behave differently when being copied
     BitReader(const BitReader &) = delete;
-    BitReader(BitReader &&) noexcept = default;
+    BitReader(BitReader && other) noexcept;
     ~BitReader() noexcept;
 
     BitReader &operator=(const BitReader &) = delete;

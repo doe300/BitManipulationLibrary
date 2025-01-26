@@ -13,11 +13,10 @@ protected:
   template <bml::ebml::EBMLElement T, bool ReadContent = false>
   void checkParseElement(std::span<const std::byte> data, T &outElement) {
     bml::BitReader reader{data};
-    if constexpr (ReadContent) {
-      outElement.read(reader, true);
-    } else {
-      outElement = bml::read<T>(reader);
-    }
+    bml::ebml::ReadOptions options{};
+    options.validateCRC32 = true;
+    options.readMediaData = ReadContent;
+    outElement.read(reader, options);
     TEST_THROWS_NOTHING(reader.assertAlignment(bml::ByteCount{1}));
     TEST_ASSERT_FALSE(reader.hasMoreBytes());
   }

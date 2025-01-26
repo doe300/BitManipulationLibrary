@@ -3,7 +3,10 @@
 
 #include "debug.hpp"
 
+#include <array>
+#include <iomanip>
 #include <span>
+#include <sstream>
 
 namespace bml::ebml {
   namespace detail {
@@ -22,22 +25,11 @@ namespace bml::ebml {
       return ByteCount{sizeof(value)} - ByteCount{numLeadingOnes / 1_bytes};
     }
 
-    /**
-     * Variable-size integer consists of 3 parts:
-     *
-     * - N consecutive 0 bits
-     * - 1 single 1 bit
-     * - (N+1) 7-bit blocks of actual integer data
-     */
-    static uintmax_t peekVariableSizeInteger(BitReader &reader, bool includePrefix) {
+    static ElementId peekElementId(BitReader &reader) {
       static_assert(sizeof(uintmax_t) <= 8, "The current implementation only works for up to 8 bytes read");
       auto prefix = static_cast<uint8_t>(reader.peek(1_bytes));
       auto numBytes = static_cast<uint32_t>(std::countl_zero(prefix) + 1 /* 1 bit */);
-      auto val = reader.peek(ByteCount{numBytes});
-      if (includePrefix) {
-        return val;
-      }
-      return val & (ByteCount{numBytes} - BitCount{numBytes}).mask();
+      return static_cast<ElementId>(reader.peek(ByteCount{numBytes}));
     }
 
     static void writeVariableSizeInteger(BitWriter &writer, uintmax_t value) {
@@ -253,6 +245,13 @@ namespace bml::ebml {
       writer.writeBytes(std::span{value});
     }
 
+    /**
+     * Variable-size integer consists of 3 parts:
+     *
+     * - N consecutive 0 bits
+     * - 1 single 1 bit
+     * - (N+1) 7-bit blocks of actual integer data
+     */
     std::pair<uintmax_t, BitCount> readVariableSizeInteger(BitReader &reader, bool includePrefix) {
       static_assert(sizeof(uintmax_t) <= 8, "The current implementation only works for up to 8 bytes read");
       auto prefix = static_cast<uint8_t>(reader.peek(1_bytes));
@@ -288,29 +287,149 @@ namespace bml::ebml {
       writeVariableSizeInteger(writer, elementSize.value());
     }
 
-    void readMasterElement(BitReader &reader, ElementId id,
-                           const std::map<ElementId, std::function<void(BitReader &)>> &members,
+    /**
+     * RAII scope for calculating and validating the CRC-32 value of a Master Element while reading from a BitReader.
+     */
+    class CRCScope {
+    public:
+      explicit CRCScope(BitReader &reader, bool calculateCRC) {
+        // Top-level CRC reader scope, initialize base underlying reader
+        if (!underlyingReader) {
+          underlyingReader = &reader;
+        }
+        ++numOpenScopes;
+
+        if (calculateCRC) {
+          wrappingReader = BitReader{[&, this](std::byte &out) {
+            // peek in the base underlying reader to not fill the cache of the parent CRC-calculating reader.
+            if (!underlyingReader || !underlyingReader->hasMoreBytes()) {
+              return false;
+            }
+            // read from the direct parent reader to transitively read from all parent CRC-calculating readers.
+            out = reader.readByte();
+            processNextByte(out);
+            return true;
+          }};
+        } else {
+          // Simply wrap the base reader
+          wrappingReader = BitReader{[](std::byte &out) {
+            if (!underlyingReader || !underlyingReader->hasMoreBytes()) {
+              return false;
+            }
+            out = underlyingReader->readByte();
+            return true;
+          }};
+        }
+      }
+
+      CRCScope(const CRCScope &) = delete;
+      CRCScope(CRCScope &&) noexcept = delete;
+
+      ~CRCScope() noexcept {
+        --numOpenScopes;
+        if (numOpenScopes == 0) {
+          // Top-level CRC reader scope, clean up base underlying reader
+          underlyingReader = nullptr;
+        }
+      }
+
+      CRCScope &operator=(const CRCScope &) = delete;
+      CRCScope &operator=(CRCScope &&) noexcept = delete;
+
+      BitReader &peeker() { return *underlyingReader; }
+      BitReader &reader() { return wrappingReader; }
+
+      void validateCRC(const MasterElement &master) const {
+        auto finalCRC32 = ~crc32;
+        if (master.crc32 && finalCRC32 != master.crc32->get()) {
+          std::stringstream ss;
+          CRC32 dummy{finalCRC32};
+          ss << "CRC-32 Element with value '" << *master.crc32 << "' does not match calculated CRC-32: " << dummy;
+          throw std::runtime_error{ss.str()};
+        }
+      }
+
+    private:
+      void processNextByte(std::byte b) {
+        auto val = static_cast<uint32_t>(b);
+        crc32 = CRC_TABLE[(crc32 ^ val) & 0xFF] ^ (crc32 >> 8);
+      }
+
+    private:
+      uint32_t crc32 = 0xFFFFFFFF;
+      BitReader wrappingReader;
+
+      // The original non CRC-calculating BitReader, used for peeking
+      static thread_local BitReader *underlyingReader;
+      static thread_local uint64_t numOpenScopes;
+
+      // Adapted from https://rosettacode.org/wiki/CRC-32#C++
+      static constexpr auto CRC_TABLE = [] {
+        std::array<std::uint32_t, 256> table;
+        for (uint32_t i = 0; i < table.size(); ++i) {
+          uint32_t c = i;
+          for (uint8_t k = 0; k < 8; ++k) {
+            if (c & 1) {
+              // IEEE-CRC-32 algorithm, specified in ISO 3309 or ITU-T V.42
+              // This is the "reversed" (little-endian) form as of
+              // https://en.wikipedia.org/wiki/Cyclic_redundancy_check
+              c = 0xEDB88320U ^ (c >> 1);
+            } else {
+              c >>= 1;
+            }
+          }
+          table[i] = c;
+        }
+        return table;
+      }();
+
+      // See https://github.com/Matroska-Org/libebml/blob/master/src/EbmlCrc32.cpp
+      static_assert(CRC_TABLE[7] == 0x9e6495a3L);
+    };
+
+    thread_local uint64_t CRCScope::numOpenScopes = 0;
+    thread_local BitReader *CRCScope::underlyingReader = nullptr;
+
+    void readMasterElement(BitReader &reader, ElementId id, MasterElement &master, const ReadOptions &options,
+                           const std::map<ElementId, std::function<void(BitReader &, const ReadOptions &)>> &members,
                            const std::set<ElementId> &terminatingElementIds) {
       auto masterSize = readElementHeader(reader, id);
-      const auto hasMoreMembers = [masterSize, startPos{reader.position()}](BitReader &r) {
-        return (masterSize == UNKNOWN_SIZE && r.hasMoreBytes()) || (r.position() < startPos + masterSize);
+      CRCScope crcScope{reader, options.validateCRC32};
+
+      const auto hasMoreMembers = [masterSize, startPos{crcScope.peeker().position()}](BitReader &r) {
+        bool pendingBytes = (masterSize == UNKNOWN_SIZE && r.hasMoreBytes()) || (r.position() < startPos + masterSize);
+        return pendingBytes;
       };
 
-      while (hasMoreMembers(reader)) {
-        auto memberId = static_cast<ElementId>(peekVariableSizeInteger(reader, true /* with prefix */));
+      // CRC-32 Element (if present) MUST BE the first Element
+      if (options.validateCRC32 && hasMoreMembers(crcScope.peeker())) {
+        auto crcId = peekElementId(crcScope.peeker());
+        if (auto it = members.find(crcId); crcId == CRC32::ID && it != members.end()) {
+          // don't read with CRC scope, since the CRC-32 itself is not part of its calculated value
+          // but read with given BitReader, which includes the CRC scopes of any parent Element.
+          it->second(reader, options);
+        }
+      }
+
+      while (hasMoreMembers(crcScope.peeker())) {
+        auto memberId = peekElementId(crcScope.peeker());
         if (auto it = members.find(memberId); it != members.end()) {
-          it->second(reader);
+          it->second(crcScope.reader(), options);
         } else if (masterSize == UNKNOWN_SIZE && terminatingElementIds.find(memberId) != terminatingElementIds.end()) {
           // end of element with unknown size
-          return;
+          break;
         } else {
-          std::ignore /* skip ID */ = readVariableSizeInteger(reader, true /* don't care */);
-          ByteCount elementSize{readVariableSizeInteger(reader, false /* without prefix */).first};
+          std::ignore /* skip ID */ = readVariableSizeInteger(crcScope.reader(), true /* don't care */);
+          ByteCount elementSize{readVariableSizeInteger(crcScope.reader(), false /* without prefix */).first};
           Debug::error("No member element with ID '" + toHexString(static_cast<uintmax_t>(memberId)) +
                        "' for current master element '" + toHexString(static_cast<uintmax_t>(id)) +
                        "', skipping unknown element of size " + elementSize.toString());
-          reader.skip(elementSize);
+          crcScope.reader().skip(elementSize);
         }
+      }
+
+      if (options.validateCRC32) {
+        crcScope.validateCRC(master);
       }
     }
 
@@ -325,7 +444,44 @@ namespace bml::ebml {
     }
   } // namespace detail
 
-  void Void::read(bml::BitReader &reader) {
+  // Contrary to the rest of the EBML values, the CRC-32 is stored in little endian!
+  void CRC32::read(bml::BitReader &reader, const ReadOptions &) {
+    auto numBytes = detail::readElementHeader(reader, ID);
+    if (!numBytes) {
+      return;
+    }
+    value = 0;
+    for (auto b = 0_bytes; b < numBytes; ++b) {
+      auto tmp = static_cast<uint32_t>(reader.readByte());
+      value = value | (tmp << b);
+    }
+  }
+
+  void CRC32::write(BitWriter &writer) const {
+    detail::writeElementHeader(writer, ID, 4_bytes);
+    const auto BYTE = 1_bytes;
+    auto tmp = value;
+    writer.writeByte(static_cast<std::byte>(tmp & BYTE.mask()));
+    tmp >>= BYTE;
+    writer.writeByte(static_cast<std::byte>(tmp & BYTE.mask()));
+    tmp >>= BYTE;
+    writer.writeByte(static_cast<std::byte>(tmp & BYTE.mask()));
+    tmp >>= BYTE;
+    writer.writeByte(static_cast<std::byte>(tmp & BYTE.mask()));
+  }
+
+  std::ostream &operator<<(std::ostream &os, const CRC32 &element) {
+    return os << "0x" << std::hex << std::setfill('0') << std::setw(8) << element.value << std::dec;
+  }
+
+  std::ostream &CRC32::printYAML(std::ostream &os, const bml::yaml::Options &options) const {
+    if (options.prefixSpace) {
+      os << ' ';
+    }
+    return os << *this;
+  }
+
+  void Void::read(bml::BitReader &reader, const ReadOptions &) {
     skipBytes = detail::readElementHeader(reader, ID);
     reader.skip(skipBytes);
   }
