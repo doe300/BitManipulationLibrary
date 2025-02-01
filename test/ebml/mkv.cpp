@@ -707,6 +707,9 @@ tags:
     TEST_THROWS_NOTHING(reader.assertAlignment(bml::ByteCount{1}));
     TEST_ASSERT_FALSE(reader.hasMoreBytes());
     TEST_ASSERT_EQUALS(expectedSegment, segment);
+
+    checkSkipElement<Segment>(std::span{DATA});
+    checkCopyElement<Segment>(std::span{DATA});
   }
 
 private:
@@ -719,6 +722,8 @@ private:
 
     checkWriteElement(std::as_bytes(std::span{data}), expectedElement);
     checkPrintYAMLElement(expectedElement, expectedYAMLString);
+    checkSkipElement<Element>(std::as_bytes(std::span{data}));
+    checkCopyElement<Element>(std::as_bytes(std::span{data}));
   }
 };
 

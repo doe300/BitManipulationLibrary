@@ -132,6 +132,9 @@ namespace bml::ebml {
         return bml::yaml::print(os, options, value);
       }
 
+      static void skip(BitReader &reader);
+      static void copy(BitReader &reader, BitWriter &writer);
+
     protected:
       void readValue(BitReader &reader, ElementId id, const T &defaultValue);
       void writeValue(BitWriter &writer, ElementId id, const T &defaultValue) const;
@@ -371,6 +374,9 @@ namespace bml::ebml {
     void read(bml::BitReader &reader, const ReadOptions & = {});
     void write(bml::BitWriter &writer) const;
 
+    static void skip(BitReader &reader);
+    static void copy(BitReader &reader, BitWriter &writer);
+
     BML_DEFINE_PRINT(Void, skipBytes)
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
   };
@@ -388,6 +394,9 @@ namespace bml::ebml {
     std::vector<Void> voidElements;
 
     constexpr auto operator<=>(const MasterElement &) const noexcept = default;
+
+    static void skip(BitReader &reader);
+    static void copy(BitReader &reader, BitWriter &writer);
   };
 
   ////
@@ -466,6 +475,27 @@ namespace bml::ebml {
      * Writes the Element header by writing the given Element ID and Element Data Size values.
      */
     void writeElementHeader(BitWriter &writer, ElementId id, ByteCount contentSize);
+
+    /*!
+     * Skips the next Element in the input reader and returns the number of bytes skipped.
+     *
+     * The optional terminatingElementIds parameter can be used to support Master Elements with Unknown Data Size. Any
+     * Element ID present in this list will finish skipping the current Master Element and return from this function.
+     * See https://www.rfc-editor.org/rfc/rfc8794.html#section-6.2 for which Element IDs need to be passed into this
+     * parameter.
+     */
+    ByteCount skipElement(BitReader &reader, const std::set<ElementId> &terminatingElementIds = {});
+
+    /*!
+     * Copies the next Element from the given input reader to the given output writer and returns the number of bytes
+     * copied.
+     *
+     * The optional terminatingElementIds parameter can be used to support Master Elements with Unknown Data Size. Any
+     * Element ID present in this list will finish copying the current Master Element and return from this function. See
+     * https://www.rfc-editor.org/rfc/rfc8794.html#section-6.2 for which Element IDs need to be passed into this
+     * parameter.
+     */
+    ByteCount copyElement(BitReader &reader, BitWriter &writer, const std::set<ElementId> &terminatingElementIds = {});
 
     /**
      * Reads the Master Element with the given ID from the given bit reader and reads all its given members.
@@ -564,6 +594,15 @@ namespace bml::ebml {
     template <typename... Types>
     void writeMasterElement(BitWriter &writer, ElementId id, const Types &...members) {
       return writeMasterElement(writer, id, {wrapMemberWriter(members)...});
+    }
+
+    template <typename T>
+    void BaseSimpleElement<T>::skip(BitReader &reader) {
+      skipElement(reader);
+    }
+    template <typename T>
+    void BaseSimpleElement<T>::copy(BitReader &reader, BitWriter &writer) {
+      copyElement(reader, writer);
     }
   } // namespace detail
 } // namespace bml::ebml

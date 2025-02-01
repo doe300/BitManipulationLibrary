@@ -287,6 +287,37 @@ namespace bml::ebml {
       writeVariableSizeInteger(writer, elementSize.value());
     }
 
+    ByteCount skipElement(BitReader &reader, const std::set<ElementId> &terminatingElementIds) {
+      auto id = readVariableSizeInteger(reader, true /* don't care */);
+      auto size = readVariableSizeInteger(reader, false /* without prefix */);
+      if (size.first == size.second.mask()) {
+        ByteCount numBytesSkipped = ByteCount{id.second.num / 8} + ByteCount{size.second.num / 7U};
+        while (reader.hasMoreBytes() && !terminatingElementIds.contains(peekElementId(reader))) {
+          numBytesSkipped += skipElement(reader, terminatingElementIds);
+        }
+        return numBytesSkipped;
+      }
+      reader.skip(ByteCount{size.first});
+      return ByteCount{id.second.num / 8} + ByteCount{size.second.num / 7U} + ByteCount{size.first};
+    }
+
+    ByteCount copyElement(BitReader &reader, BitWriter &writer, const std::set<ElementId> &terminatingElementIds) {
+      auto id = readVariableSizeInteger(reader, true /* don't care */);
+      auto size = readVariableSizeInteger(reader, false /* without prefix */);
+      if (size.first == size.second.mask()) {
+        writer.write(id.first, id.second);
+        writer.write(UNKNOWN_SIZE.num, ByteCount{size.second.num / 7U});
+        ByteCount numBytesCopied = ByteCount{id.second.num / 8} + ByteCount{size.second.num / 7U};
+        while (reader.hasMoreBytes() && !terminatingElementIds.contains(peekElementId(reader))) {
+          numBytesCopied += copyElement(reader, writer, terminatingElementIds);
+        }
+        return numBytesCopied;
+      }
+      writeElementHeader(writer, ElementId{id.first}, ByteCount{size.first});
+      bml::copyBits(reader, writer, ByteCount{size.first});
+      return ByteCount{id.second.num / 8} + ByteCount{size.second.num / 7U} + ByteCount{size.first};
+    }
+
     /**
      * RAII scope for calculating and validating the CRC-32 value of a Master Element while reading from a BitReader.
      */
@@ -415,7 +446,7 @@ namespace bml::ebml {
         auto memberId = peekElementId(crcScope.peeker());
         if (auto it = members.find(memberId); it != members.end()) {
           it->second(crcScope.reader(), options);
-        } else if (masterSize == UNKNOWN_SIZE && terminatingElementIds.find(memberId) != terminatingElementIds.end()) {
+        } else if (masterSize == UNKNOWN_SIZE && terminatingElementIds.contains(memberId)) {
           // end of element with unknown size
           break;
         } else {
@@ -491,10 +522,16 @@ namespace bml::ebml {
     writer.fillBytes(std::byte{0x00}, skipBytes);
   }
 
+  void Void::skip(BitReader &reader) { detail::skipElement(reader); }
+  void Void::copy(BitReader &reader, BitWriter &writer) { detail::copyElement(reader, writer); }
+
   std::ostream &Void::printYAML(std::ostream &os, const bml::yaml::Options &options) const {
     os << options.indentation(true /* first member */);
     return os << "skipBytes: " << skipBytes.num;
   }
+
+  void MasterElement::skip(BitReader &reader) { detail::skipElement(reader); }
+  void MasterElement::copy(BitReader &reader, BitWriter &writer) { detail::copyElement(reader, writer); }
 
   BML_EBML_DEFINE_IO(DocTypeExtension, crc32, docTypeExtensionName, docTypeExtensionVersion, voidElements)
   BML_YAML_DEFINE_PRINT(DocTypeExtension, crc32, docTypeExtensionName, docTypeExtensionVersion, voidElements)

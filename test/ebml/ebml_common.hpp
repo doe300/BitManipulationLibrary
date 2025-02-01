@@ -62,6 +62,33 @@ protected:
     TEST_ASSERT(bml::maxNumBits<T>() >= expectedSize);
   }
 
+  template <typename T>
+  void checkSkipElement(std::span<const std::byte> data, bml::ByteCount numBytes = {}) {
+    bml::BitReader reader{data};
+    TEST_THROWS_NOTHING(bml::skip<T>(reader));
+    if (!numBytes) {
+      TEST_ASSERT(!reader.hasMoreBytes());
+    } else {
+      TEST_ASSERT_EQUALS(numBytes, reader.position());
+    }
+  }
+
+  template <typename T>
+  void checkCopyElement(std::span<const std::byte> data, bml::ByteCount numBytes = {}) {
+    bml::BitReader reader{data};
+    std::vector<std::byte> outputData(data.size());
+    bml::BitWriter writer{outputData};
+    TEST_THROWS_NOTHING(bml::copy<T>(reader, writer));
+    TEST_ASSERT_EQUALS(reader.position(), writer.position());
+    if (!numBytes) {
+      TEST_ASSERT(!reader.hasMoreBytes());
+    } else {
+      TEST_ASSERT_EQUALS(numBytes, reader.position());
+      TEST_ASSERT_EQUALS(numBytes, writer.position());
+    }
+    TEST_ASSERT_EQUALS(data, outputData);
+  }
+
   static std::vector<std::byte> toBytes(std::initializer_list<uint8_t> list) {
     std::vector<std::byte> result(list.size());
     std::transform(list.begin(), list.end(), result.begin(), [](uint8_t b) { return std::bit_cast<std::byte>(b); });

@@ -82,6 +82,12 @@ namespace bml::ebml::mkv {
                         wrapMemberWriter(voidElements)});
   }
 
+  void Segment::skip(BitReader &reader) { bml::ebml::detail::skipElement(reader, {EBMLHeader::ID, Segment::ID}); }
+
+  void Segment::copy(BitReader &reader, BitWriter &writer) {
+    bml::ebml::detail::copyElement(reader, writer, {EBMLHeader::ID, Segment::ID});
+  }
+
   BML_YAML_DEFINE_PRINT(Segment, crc32, seekHeads, info, tracks, cues, chapters, clusters, attachments, tags,
                         voidElements)
 
@@ -101,6 +107,17 @@ namespace bml::ebml::mkv {
                        {wrapMemberWriter(crc32), wrapMemberWriter(timestamp), wrapMemberWriter(position),
                         wrapMemberWriter(prevSize), wrapMemberWriter(simpleBlocks), wrapMemberWriter(blockGroups),
                         wrapMemberWriter(voidElements)});
+  }
+
+  void Cluster::skip(BitReader &reader) {
+    bml::ebml::detail::skipElement(reader, {EBMLHeader::ID, Segment::ID, SeekHead::ID, Info::ID, Tracks::ID, Cues::ID,
+                                            Chapters::ID, Cluster::ID, Attachments::ID, Tags::ID});
+  }
+
+  void Cluster::copy(BitReader &reader, BitWriter &writer) {
+    bml::ebml::detail::copyElement(reader, writer,
+                                   {EBMLHeader::ID, Segment::ID, SeekHead::ID, Info::ID, Tracks::ID, Cues::ID,
+                                    Chapters::ID, Cluster::ID, Attachments::ID, Tags::ID});
   }
 
   BML_YAML_DEFINE_PRINT(Cluster, crc32, timestamp, position, prevSize, simpleBlocks, blockGroups, voidElements)

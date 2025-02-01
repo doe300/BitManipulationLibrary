@@ -22,6 +22,9 @@ struct TestDynamicElement final : MasterElement {
   void write(bml::BitWriter &writer) const { bml::ebml::detail::writeMasterElement(writer, ID, data); }
 
   BML_DEFINE_PRINT(TestDynamicElement, data)
+
+  static void skip(BitReader &reader) { bml::ebml::detail::skipElement(reader, {ID}); }
+  static void copy(BitReader &reader, BitWriter &writer) { bml::ebml::detail::copyElement(reader, writer, {ID}); }
 };
 
 class TestBaseElements : public TestElementsBase {
@@ -303,6 +306,9 @@ public:
       TEST_ASSERT_EQUALS(6U, elem.data.size());
       TEST_ASSERT_EQUALS(5_bytes, elem.data[2].skipBytes);
       TEST_ASSERT_FALSE(reader.hasMoreBytes());
+
+      checkSkipElement<TestDynamicElement>(std::span{DATA}.subspan(0, DATA.size() - 4U));
+      checkCopyElement<TestDynamicElement>(std::span{DATA}.subspan(0, DATA.size() - 4U));
     }
 
     // Terminated by other element
@@ -316,6 +322,8 @@ public:
       TEST_ASSERT_EQUALS(6U, elem.data.size());
       TEST_ASSERT_EQUALS(5_bytes, elem.data[2].skipBytes);
       TEST_ASSERT(reader.hasMoreBytes());
+
+      checkSkipElement<TestDynamicElement>(std::span{DATA}, 55_bytes);
     }
 
     // Empty due to end of stream
@@ -327,6 +335,9 @@ public:
       TEST_ASSERT_FALSE(elem.crc32);
       TEST_ASSERT(elem.data.empty());
       TEST_ASSERT_FALSE(reader.hasMoreBytes());
+
+      checkSkipElement<TestDynamicElement>(std::span{DATA}.subspan(0, 2));
+      checkCopyElement<TestDynamicElement>(std::span{DATA}.subspan(0, 2));
     }
   }
 
@@ -344,6 +355,8 @@ private:
     checkWriteElement(std::as_bytes(std::span{data}), expectedElement);
     checkPrintElement(expectedElement, expectedString);
     checkElementSize(expectedElement, expectedSize);
+    checkSkipElement<Element>(std::as_bytes(std::span{data}));
+    checkCopyElement<Element>(std::as_bytes(std::span{data}));
   }
 
   template <EBMLElement Element, typename T = decltype(Element::DEFAULT)>
@@ -360,6 +373,8 @@ private:
     checkWriteElement(toBytes({}), expectedElement);
     checkPrintElement(expectedElement, expectedString);
     checkElementSize(expectedElement, expectedSize);
+    checkSkipElement<Element>(std::as_bytes(std::span{data}));
+    checkCopyElement<Element>(std::as_bytes(std::span{data}));
   }
 };
 
@@ -435,6 +450,8 @@ private:
 
     checkWriteElement(std::as_bytes(std::span{data}), expectedElement);
     checkPrintYAMLElement(expectedElement, expectedYAMLString);
+    checkSkipElement<Element>(std::as_bytes(std::span{data}));
+    checkCopyElement<Element>(std::as_bytes(std::span{data}));
   }
 };
 

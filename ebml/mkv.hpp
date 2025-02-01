@@ -223,6 +223,9 @@ namespace bml::ebml::mkv {
     void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
 
+    static void skip(BitReader &reader);
+    static void copy(BitReader &reader, BitWriter &writer);
+
     friend std::ostream &operator<<(std::ostream &os, const Cluster &cluster);
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
   };
@@ -913,6 +916,9 @@ namespace bml::ebml::mkv {
 
     void read(bml::BitReader &reader, const ReadOptions &options = {});
     void write(bml::BitWriter &writer) const;
+
+    static void skip(BitReader &reader);
+    static void copy(BitReader &reader, BitWriter &writer);
 
     BML_DEFINE_PRINT(Segment, crc32, seekHeads, info, tracks, cues, chapters, clusters, attachments, tags, voidElements)
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
