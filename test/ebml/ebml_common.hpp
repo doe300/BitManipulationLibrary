@@ -48,7 +48,7 @@ protected:
   {
     std::stringstream ss{};
     bml::yaml::Options opts{};
-    opts.hideEmpty = true;
+    opts.flags = bml::yaml::PrintFlags::HIDE_EMPTY | bml::yaml::PrintFlags::HIDE_DETAILS;
     bml::yaml::print(ss, opts, val);
     TEST_ASSERT_EQUALS(expectedVal, ss.str());
   }

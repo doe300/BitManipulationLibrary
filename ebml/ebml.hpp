@@ -128,10 +128,6 @@ namespace bml::ebml {
         return os << bml::printView(element.value);
       }
 
-      std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const {
-        return bml::yaml::print(os, options, value);
-      }
-
       static void skip(BitReader &reader);
       static void copy(BitReader &reader, BitWriter &writer);
 
@@ -144,6 +140,14 @@ namespace bml::ebml {
 
       template <typename U>
       friend class BaseSimpleElement;
+      template <typename U>
+      friend struct bml::yaml::YAMLTraits;
+    };
+
+    template <typename T>
+    concept SimpleEBMLElement = requires(T val) {
+      // Check whether the type T can be converted (and thus extends) to a specialization of BaseSimpleElement
+      []<typename X>(BaseSimpleElement<X> &) {}(val);
     };
 
     /**
@@ -606,3 +610,22 @@ namespace bml::ebml {
     }
   } // namespace detail
 } // namespace bml::ebml
+
+namespace bml::yaml {
+
+  template <bml::ebml::detail::SimpleEBMLElement T>
+  struct YAMLTraits<T> {
+    static std::ostream &print(std::ostream &os, const Options &options, const T &val) {
+      return bml::yaml::print(os, options, val.value);
+    }
+
+    static bool isDefault(const T &val)
+      requires(requires() { T::DEFAULT; })
+    {
+      return val.value == T::DEFAULT;
+    }
+
+    static constexpr bool SIMPLE_LIST = true;
+  };
+
+} // namespace bml::yaml

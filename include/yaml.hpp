@@ -12,6 +12,32 @@
 
 namespace bml::yaml {
 
+  /*!
+   * Additional flags that can be specified for YAML printing.
+   */
+  enum class PrintFlags : uint32_t {
+    NONE = 0x00,
+    /*!
+     * Don't print entries which are considered "empty" (e.g. empty optional values, empty containers, etc.)
+     */
+    HIDE_EMPTY = 0x01,
+    /*!
+     * Don't print entries which have a "default" value.
+     */
+    HIDE_DEFAULT = 0x02,
+    /*!
+     * Don't print some more detailed information.
+     *
+     * It is up to the type being printed to decide what "details" to omit.
+     */
+    HIDE_DETAILS = 0x04,
+  };
+
+  constexpr PrintFlags operator|(PrintFlags one, PrintFlags other) noexcept {
+    return static_cast<PrintFlags>(static_cast<std::underlying_type_t<PrintFlags>>(one) |
+                                   static_cast<std::underlying_type_t<PrintFlags>>(other));
+  }
+
   /**
    * Container for user-defined and internal options for YAML representation generation.
    */
@@ -25,21 +51,51 @@ namespace bml::yaml {
     uint32_t truncateSequenceLimit = DEFAULT_SEQUENCE_LIMIT;
     uint32_t depth = 0;
     bool inSequence = false;
-    bool hideEmpty = false;
     bool prefixSpace = false;
+    PrintFlags flags = PrintFlags::NONE;
 
     /**
      * Copies the options for the next indentation level.
      */
     constexpr Options nextLevel(bool isSequence) const noexcept {
-      return Options{truncateSequenceLimit, depth + 1, isSequence, hideEmpty, true};
+      return Options{truncateSequenceLimit, depth + 1, isSequence, true, flags};
     }
 
     /**
      * Returns the prefix string to be added for the current indentation level.
      */
     std::string indentation(bool firstMember) const;
+
+    constexpr bool hasFlags(PrintFlags flag) const noexcept {
+      return (static_cast<std::underlying_type_t<PrintFlags>>(flags) &
+              static_cast<std::underlying_type_t<PrintFlags>>(flag)) ==
+             static_cast<std::underlying_type_t<PrintFlags>>(flag);
+    }
   };
+
+  /*!
+   * Traits type to be specialized for custom types, enabling special handling:
+   *
+   * The presence of a static member function with the following signature enables printing as YAML value:
+   *
+   * static <any> print(std::ostream&, const Options &, const T&)
+   *
+   * The presence of a static member function with the following signature enables support for the
+   * PrintFlags#HIDE_EMPTY flag:
+   *
+   * static bool isEmpty(const T&)
+   *
+   * The presence of a static member function with the following signature enables support for the
+   * PrintFlags#HIDE_DEFAULT flag:
+   *
+   * static bool isDefault(const T&)
+   *
+   * When set to true, the following static constant enables printing in short (one-lined) lists:
+   *
+   * static constexpr bool SIMPLE_LIST;
+   */
+  template <typename T>
+  struct YAMLTraits;
 
   inline namespace concepts {
     /**
@@ -51,13 +107,58 @@ namespace bml::yaml {
     concept HasPrintYAMLMember =
         requires(const Type &obj) { obj.printYAML(std::declval<std::ostream &>(), std::declval<const Options &>()); };
 
+    /**
+     * Concept checking whether the type has an associated bml::yaml::YAMLTraits type with a static member function with
+     * following signature:
+     *
+     * static <any> print(std::ostream&, const Options &, const T&)
+     */
+    template <typename Type>
+    concept HasYAMLTraitsPrint = !HasPrintYAMLMember<Type> && requires(const Type &obj) {
+      bml::yaml::YAMLTraits<Type>::print(std::declval<std::ostream &>(), std::declval<const Options &>(), obj);
+    };
+
+    /**
+     * Concept checking whether the type has an associated bml::yaml::YAMLTraits type with a static member function with
+     * following signature:
+     *
+     * static bool isEmpty(const T&)
+     */
+    template <typename Type>
+    concept HasYAMLTraitsEmptyCheck = requires(const Type &obj) {
+      { bml::yaml::YAMLTraits<Type>::isEmpty(obj) } -> std::convertible_to<bool>;
+    };
+
+    /**
+     * Concept checking whether the type has an associated bml::yaml::YAMLTraits type with a static member function with
+     * following signature:
+     *
+     * static bool isDefault(const T&)
+     */
+    template <typename Type>
+    concept HasYAMLTraitsDefaultCheck = requires(const Type &obj) {
+      { bml::yaml::YAMLTraits<Type>::isDefault(obj) } -> std::convertible_to<bool>;
+    };
+
+    /**
+     * Concept checking whether the type has an associated bml::yaml::YAMLTraits type with a static member constant with
+     * following signature:
+     *
+     * static constexpr bool SIMPLE_LIST;
+     */
+    template <typename Type>
+    concept HasYAMLTraitsSimpleList = requires(const Type &obj) {
+      { bml::yaml::YAMLTraits<Type>::SIMPLE_LIST } -> std::convertible_to<bool>;
+      bml::yaml::YAMLTraits<Type>::SIMPLE_LIST == true;
+    };
+
     /*!
      * Concept checking whether sequences of the given member type are listed as simple lists (e.g. "[a, b, d, c]") or
      * more complex multi-line lists.
      */
     template <typename Type>
     concept SimpleListMember = std::integral<Type> || std::floating_point<Type> || std::same_as<Type, std::byte> ||
-                               (HasPrintYAMLMember<Type> && requires() {
+                               HasYAMLTraitsSimpleList<Type> || (HasPrintYAMLMember<Type> && requires() {
                                  typename Type::yaml_print_type;
                                  requires(std::integral<typename Type::yaml_print_type> ||
                                           std::floating_point<typename Type::yaml_print_type> ||
@@ -85,6 +186,11 @@ namespace bml::yaml {
     return print(os, options, static_cast<intmax_t>(val));
   }
 
+  template <bml::concepts::Enum T>
+  std::ostream &print(std::ostream &os, const Options &options, T val) {
+    return print(os, options, static_cast<std::underlying_type_t<T>>(val));
+  }
+
   template <typename Clock, typename Duration>
   std::ostream &print(std::ostream &os, const Options &options, const std::chrono::time_point<Clock, Duration> &val) {
     if (options.prefixSpace) {
@@ -96,6 +202,12 @@ namespace bml::yaml {
   template <HasPrintYAMLMember T>
   std::ostream &print(std::ostream &os, const Options &options, const T &val) {
     val.printYAML(os, options);
+    return os;
+  }
+
+  template <HasYAMLTraitsPrint T>
+  std::ostream &print(std::ostream &os, const Options &options, const T &val) {
+    bml::yaml::YAMLTraits<T>::print(os, options, val);
     return os;
   }
 
@@ -131,7 +243,7 @@ namespace bml::yaml {
     requires(!SimpleListMember<T>)
   {
     if (val.empty()) {
-      return os << "[]";
+      return os << (options.prefixSpace ? " []" : "[]");
     }
     for (const auto &elem : val) {
       print(os, options.nextLevel(true /* sequence */), elem);
@@ -159,28 +271,53 @@ namespace bml::yaml {
   namespace detail {
 
     template <typename T>
-    static bool hideMember(const Options & /* options */, const T &) noexcept {
-      return false;
-    }
+    struct HideEmpty {
+      bool operator()(const Options &, const T &) noexcept { return false; }
+    };
+
+    template <HasYAMLTraitsEmptyCheck T>
+    struct HideEmpty<T> {
+      bool operator()(const Options &options, const T &val) {
+        return options.hasFlags(PrintFlags::HIDE_EMPTY) && bml::yaml::YAMLTraits<T>::isEmpty(val);
+      }
+    };
 
     template <typename T>
-    static bool hideMember(const Options &options, const std::optional<T> &val) noexcept {
-      return options.hideEmpty && !val;
-    }
+    struct HideEmpty<std::optional<T>> {
+      bool operator()(const Options &options, const std::optional<T> &val) noexcept {
+        return options.hasFlags(PrintFlags::HIDE_EMPTY) && !val;
+      }
+    };
 
     template <typename T>
-    static bool hideMember(const Options &options, std::span<const T> val) noexcept {
-      return options.hideEmpty && val.empty();
-    }
+    struct HideEmpty<std::span<const T>> {
+      bool operator()(const Options &options, std::span<const T> val) noexcept {
+        return options.hasFlags(PrintFlags::HIDE_EMPTY) && val.empty();
+      }
+    };
 
     template <typename T>
-    static bool hideMember(const Options &options, const std::vector<T> &val) noexcept {
-      return options.hideEmpty && val.empty();
-    }
+    struct HideEmpty<std::vector<T>> {
+      bool operator()(const Options &options, const std::vector<T> &val) noexcept {
+        return options.hasFlags(PrintFlags::HIDE_EMPTY) && val.empty();
+      }
+    };
+
+    template <typename T>
+    struct HideDefault {
+      bool operator()(const Options &, const T &) noexcept { return false; }
+    };
+
+    template <HasYAMLTraitsDefaultCheck T>
+    struct HideDefault<T> {
+      bool operator()(const Options &options, const T &val) noexcept {
+        return options.hasFlags(PrintFlags::HIDE_DEFAULT) && bml::yaml::YAMLTraits<T>::isDefault(val);
+      }
+    };
 
     template <typename T>
     void printMember(std::ostream &os, const Options &options, bool firstMember, std::string_view name, T &&last) {
-      if (!hideMember(options, last)) {
+      if (!HideEmpty<std::decay_t<T>>{}(options, last) && !HideDefault<std::decay_t<T>>{}(options, last)) {
         os << options.indentation(firstMember) << name << ':';
         bml::yaml::print(os, options.nextLevel(false /* no sequence */), std::forward<T>(last));
       }
@@ -192,7 +329,7 @@ namespace bml::yaml {
       auto nameEnd = names.find(',');
       auto nameLength = nameEnd != std::string_view::npos ? nameEnd : names.size();
       bool nextIsFirstMember = false;
-      if (hideMember(options, head)) {
+      if (HideEmpty<std::decay_t<T>>{}(options, head) || HideDefault<std::decay_t<T>>{}(options, head)) {
         nextIsFirstMember = firstMember;
       } else {
         os << options.indentation(firstMember) << names.substr(0, nameLength) << ':';

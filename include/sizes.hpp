@@ -110,6 +110,11 @@ namespace bml {
       template <std::size_t N = Size>
       std::enable_if_t<N == 8, std::string> toString() const;
 
+      template <std::size_t N>
+      constexpr SizeType<N> divide() const noexcept {
+        return SizeType<N>{bits() / N};
+      }
+
       std::size_t num = 0;
     };
 

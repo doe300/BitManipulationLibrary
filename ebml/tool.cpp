@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
   mkv.read(reader, options);
   if (printYaml) {
     bml::yaml::Options opts{};
-    opts.hideEmpty = true;
+    opts.flags = bml::yaml::PrintFlags::HIDE_EMPTY | bml::yaml::PrintFlags::HIDE_DEFAULT;
     mkv.printYAML(std::cout, opts) << std::endl;
   } else {
     std::cout << mkv << std::endl;

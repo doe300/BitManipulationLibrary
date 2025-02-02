@@ -367,6 +367,13 @@ public:
     TEST_ASSERT_EQUALS("325B", (325_bytes).toString());
     TEST_ASSERT_EQUALS("325MB", (340787200_bytes).toString());
     TEST_ASSERT_EQUALS("334.54MB", (350787200_bytes).toString());
+
+    TEST_ASSERT_EQUALS(1U, (15_bits).divide<8>().num);
+    TEST_ASSERT_EQUALS(2U, (16_bits).divide<8>().num);
+    TEST_ASSERT_EQUALS(2U, (17_bits).divide<8>().num);
+    TEST_ASSERT_EQUALS(5U, (15_bits).divide<3>().num);
+    TEST_ASSERT_EQUALS(5U, (16_bits).divide<3>().num);
+    TEST_ASSERT_EQUALS(8U, (2_bytes).divide<2>().num);
   }
 };
 

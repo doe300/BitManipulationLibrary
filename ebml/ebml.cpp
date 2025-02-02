@@ -291,14 +291,14 @@ namespace bml::ebml {
       auto id = readVariableSizeInteger(reader, true /* don't care */);
       auto size = readVariableSizeInteger(reader, false /* without prefix */);
       if (size.first == size.second.mask()) {
-        ByteCount numBytesSkipped = ByteCount{id.second.num / 8} + ByteCount{size.second.num / 7U};
+        ByteCount numBytesSkipped = id.second.divide<8>() + ByteCount{size.second.num / 7U};
         while (reader.hasMoreBytes() && !terminatingElementIds.contains(peekElementId(reader))) {
           numBytesSkipped += skipElement(reader, terminatingElementIds);
         }
         return numBytesSkipped;
       }
       reader.skip(ByteCount{size.first});
-      return ByteCount{id.second.num / 8} + ByteCount{size.second.num / 7U} + ByteCount{size.first};
+      return id.second.divide<8>() + ByteCount{size.second.num / 7U} + ByteCount{size.first};
     }
 
     ByteCount copyElement(BitReader &reader, BitWriter &writer, const std::set<ElementId> &terminatingElementIds) {
@@ -307,7 +307,7 @@ namespace bml::ebml {
       if (size.first == size.second.mask()) {
         writer.write(id.first, id.second);
         writer.write(UNKNOWN_SIZE.num, ByteCount{size.second.num / 7U});
-        ByteCount numBytesCopied = ByteCount{id.second.num / 8} + ByteCount{size.second.num / 7U};
+        ByteCount numBytesCopied = id.second.divide<8>() + ByteCount{size.second.num / 7U};
         while (reader.hasMoreBytes() && !terminatingElementIds.contains(peekElementId(reader))) {
           numBytesCopied += copyElement(reader, writer, terminatingElementIds);
         }
@@ -315,7 +315,7 @@ namespace bml::ebml {
       }
       writeElementHeader(writer, ElementId{id.first}, ByteCount{size.first});
       bml::copyBits(reader, writer, ByteCount{size.first});
-      return ByteCount{id.second.num / 8} + ByteCount{size.second.num / 7U} + ByteCount{size.first};
+      return id.second.divide<8>() + ByteCount{size.second.num / 7U} + ByteCount{size.first};
     }
 
     /**
