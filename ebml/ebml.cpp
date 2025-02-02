@@ -393,6 +393,7 @@ namespace bml::ebml {
       // The original non CRC-calculating BitReader, used for peeking
       static thread_local BitReader *underlyingReader;
       static thread_local uint64_t numOpenScopes;
+      friend BitReader &getUnderlyingReader(BitReader &);
 
       // Adapted from https://rosettacode.org/wiki/CRC-32#C++
       static constexpr auto CRC_TABLE = [] {
@@ -420,6 +421,13 @@ namespace bml::ebml {
 
     thread_local uint64_t CRCScope::numOpenScopes = 0;
     thread_local BitReader *CRCScope::underlyingReader = nullptr;
+
+    BitReader &getUnderlyingReader(BitReader &reader) {
+      if (CRCScope::underlyingReader) {
+        return *CRCScope::underlyingReader;
+      }
+      return reader;
+    }
 
     void readMasterElement(BitReader &reader, ElementId id, MasterElement &master, const ReadOptions &options,
                            const std::map<ElementId, std::function<void(BitReader &, const ReadOptions &)>> &members,

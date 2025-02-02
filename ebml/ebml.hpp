@@ -145,7 +145,7 @@ namespace bml::ebml {
     };
 
     template <typename T>
-    concept SimpleEBMLElement = requires(T val) {
+    concept SimpleEBMLElement = EBMLElement<T> && requires(T val) {
       // Check whether the type T can be converted (and thus extends) to a specialization of BaseSimpleElement
       []<typename X>(BaseSimpleElement<X> &) {}(val);
     };

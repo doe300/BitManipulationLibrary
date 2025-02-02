@@ -11,6 +11,62 @@
  */
 namespace bml::ebml::mkv {
 
+  /*!
+   * Informational container for block data fields.
+   */
+  struct BlockHeader {
+    enum class Lacing : uint8_t {
+      NONE = 0x00,
+      XIPH = 0x01,
+      EBML = 0x11,
+      FIXED_SIZE = 0x10,
+    };
+
+    /*!
+     * The Track Entry number associated with the contained data.
+     *
+     * This field is informational only
+     */
+    uint32_t trackNumber;
+
+    /*!
+     * The timestamp offset relative to the parent Cluster timestamp.
+     */
+    int16_t timestampOffset;
+
+    /*!
+     * Whether the Block only contains key-frames.
+     *
+     * Only valid for SimpleBlocks.
+     */
+    bool keyframe;
+
+    /*!
+     * Whether the contained frame should be decoded, but not be played out.
+     */
+    bool invisible;
+
+    /*!
+     * The lacing mode to group multiple frames into the Block.
+     */
+    Lacing lacing;
+
+    /*!
+     * Whether the contained frame(s) can be discarded during playback if needed.
+     *
+     * Only valid for SimpleBlocks.
+     */
+    bool discardable;
+
+    constexpr BlockHeader() noexcept = default;
+    constexpr auto operator<=>(const BlockHeader &) const noexcept = default;
+
+    void read(bml::BitReader &reader, const ReadOptions &options = {});
+
+    BML_DEFINE_PRINT(BlockHeader, trackNumber, timestampOffset, keyframe, invisible, lacing, discardable)
+    std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
+  };
+
   namespace detail {
     /**
      * Base type for all Binary Elements storing an UUID.
@@ -32,12 +88,34 @@ namespace bml::ebml::mkv {
      * Base type for all Block Element types to provide common read/write functionality.
      */
     struct BaseBlockElement : MasterElement {
+      /*!
+       * Offset of the Block Element's data relative to the start of the read byte source.
+       *
+       * In combination with the dataSize member, this can be used to efficiently access the Block Element data.
+       */
+      ByteCount dataPosition;
+
+      /*!
+       * Number of data bytes in this Block Element.
+       */
       ByteCount dataSize;
+
+      /*!
+       * The actual data bytes of this Block Element.
+       *
+       * This member is only filled if the ReadOptions#readMediaData is set on reading this Element.
+       * This member is requires for the Block Element to be able to be written back out.
+       */
       std::vector<std::byte> data;
+
+      /*!
+       * The informational block header data
+       */
+      BlockHeader header;
 
       constexpr auto operator<=>(const BaseBlockElement &) const noexcept = default;
 
-      BML_DEFINE_PRINT(BaseBlockElement, crc32, dataSize, voidElements)
+      BML_DEFINE_PRINT(BaseBlockElement, crc32, dataPosition, dataSize, header, voidElements)
       std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
 
     protected:

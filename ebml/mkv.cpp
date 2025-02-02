@@ -3,7 +3,41 @@
 
 #include <format>
 
+namespace bml::ebml::detail {
+  extern BitReader &getUnderlyingReader(BitReader &reader);
+} // namespace bml::ebml::detail
+
 namespace bml::ebml::mkv {
+
+  void BlockHeader::read(bml::BitReader &reader, const ReadOptions & /* options */) {
+    trackNumber =
+        static_cast<uint32_t>(bml::ebml::detail::readVariableSizeInteger(reader, false /* no prefix */).first);
+    timestampOffset = std::bit_cast<int16_t>(reader.read<uint16_t>(2_bytes));
+    keyframe = reader.read();
+    reader.skip(3_bits);
+    invisible = reader.read();
+    lacing = reader.read<Lacing>(2_bits);
+    discardable = reader.read();
+  }
+
+  std::ostream &BlockHeader::printYAML(std::ostream &os, const bml::yaml::Options &options) const {
+    using namespace bml::yaml;
+    bml::yaml::detail::printMember(os, options, true /* first member */, "trackNumber, timestampOffset", trackNumber,
+                                   timestampOffset);
+    if (keyframe || !options.hasFlags(PrintFlags::HIDE_DEFAULT)) {
+      bml::yaml::detail::printMember(os, options, false, "keyframe", keyframe);
+    }
+    if (invisible || !options.hasFlags(PrintFlags::HIDE_DEFAULT)) {
+      bml::yaml::detail::printMember(os, options, false, "invisible", invisible);
+    }
+    if (lacing != Lacing::NONE || !options.hasFlags(PrintFlags::HIDE_DEFAULT)) {
+      bml::yaml::detail::printMember(os, options, false, "lacing", lacing);
+    }
+    if (discardable || !options.hasFlags(PrintFlags::HIDE_DEFAULT)) {
+      bml::yaml::detail::printMember(os, options, false, "discardable", discardable);
+    }
+    return os;
+  }
 
   namespace detail {
     static std::string formatUUID(const std::array<std::byte, 16> &uuid) {
@@ -39,12 +73,18 @@ namespace bml::ebml::mkv {
 
     void BaseBlockElement::readValue(BitReader &reader, ElementId id, const ReadOptions &options) {
       dataSize = ebml::detail::readElementHeader(reader, id);
+      dataPosition = bml::ebml::detail::getUnderlyingReader(reader).position().divide<8>();
 
       if (options.readMediaData) {
         data.resize(dataSize.num);
         reader.readBytesInto(std::span{data});
+
+        BitReader tmpReader{std::span{data}};
+        header.read(tmpReader);
       } else {
-        reader.skip(dataSize);
+        auto endPos = reader.position() + dataSize;
+        header.read(reader);
+        reader.skip(endPos - reader.position());
       }
     }
 
@@ -54,12 +94,18 @@ namespace bml::ebml::mkv {
     }
 
     std::ostream &BaseBlockElement::printYAML(std::ostream &os, const bml::yaml::Options &options) const {
-      os << options.indentation(true /* first member */);
       if (!data.empty()) {
-        os << "data:";
-        return bml::yaml::print(os, options, data);
+        os << options.indentation(true /* first member */) << "data:";
+        bml::yaml::print(os, options, data);
+      } else {
+        os << options.indentation(true /* first member */) << "dataPosition: " << dataPosition.num;
+        os << options.indentation(false /* second member */) << "dataSize: " << dataSize.num;
       }
-      return os << "dataSize: " << dataSize.num;
+      if (!options.hasFlags(yaml::PrintFlags::HIDE_DETAILS)) {
+        os << options.indentation(false /* not first member */) << "header:";
+        bml::yaml::print(os, options.nextLevel(false), header);
+      }
+      return os;
     }
   } // namespace detail
 
