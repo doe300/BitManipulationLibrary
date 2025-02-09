@@ -3,6 +3,7 @@
 #include "ebml.hpp"
 
 #include <array>
+#include <ranges>
 
 /**
  * Types for reading/writing the container structure of the Matroska (MKV) media container format.
@@ -12,58 +13,35 @@
 namespace bml::ebml::mkv {
 
   /*!
-   * Informational container for block data fields.
+   * Block header fields.
    */
   struct BlockHeader {
+    static constexpr ByteCount minNumBits() { return VariableSizeInteger::minNumBits() + 3_bytes; };
+    static constexpr ByteCount maxNumBits() { return VariableSizeInteger::maxNumBits() + 3_bytes; }
+
     enum class Lacing : uint8_t {
-      NONE = 0x00,
-      XIPH = 0x01,
-      EBML = 0x11,
-      FIXED_SIZE = 0x10,
+      NONE = 0b00,
+      XIPH = 0b01,
+      EBML = 0b11,
+      FIXED_SIZE = 0b10,
     };
 
-    /*!
-     * The Track Entry number associated with the contained data.
-     *
-     * This field is informational only
-     */
-    uint32_t trackNumber;
-
-    /*!
-     * The timestamp offset relative to the parent Cluster timestamp.
-     */
-    int16_t timestampOffset;
-
-    /*!
-     * Whether the Block only contains key-frames.
-     *
-     * Only valid for SimpleBlocks.
-     */
-    bool keyframe;
-
-    /*!
-     * Whether the contained frame should be decoded, but not be played out.
-     */
-    bool invisible;
-
-    /*!
-     * The lacing mode to group multiple frames into the Block.
-     */
-    Lacing lacing;
-
-    /*!
-     * Whether the contained frame(s) can be discarded during playback if needed.
-     *
-     * Only valid for SimpleBlocks.
-     */
-    bool discardable;
+    VariableSizeInteger trackNumber;
+    SignedBytes<int16_t> timestampOffset;
+    Bit keyframe;
+    FixedBits<3, 0b0> reserved;
+    Bit invisible;
+    Bits<2, Lacing> lacing;
+    Bit discardable;
 
     constexpr BlockHeader() noexcept = default;
     constexpr auto operator<=>(const BlockHeader &) const noexcept = default;
+    constexpr ByteCount numBits() const noexcept { return trackNumber.numBits() + 3_bytes; }
 
     void read(bml::BitReader &reader, const ReadOptions &options = {});
+    void write(BitWriter &writer) const;
 
-    BML_DEFINE_PRINT(BlockHeader, trackNumber, timestampOffset, keyframe, invisible, lacing, discardable)
+    BML_DEFINE_PRINT(BlockHeader, trackNumber, timestampOffset, keyframe, reserved, invisible, lacing, discardable)
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
   };
 
@@ -89,33 +67,29 @@ namespace bml::ebml::mkv {
      */
     struct BaseBlockElement : MasterElement {
       /*!
-       * Offset of the Block Element's data relative to the start of the read byte source.
+       * The block header data,
+       */
+      BlockHeader header;
+
+      /*!
+       * Ranges of the contained frame data relative to the start of the read byte source.
        *
-       * In combination with the dataSize member, this can be used to efficiently access the Block Element data.
+       * NOTE: This value is informational only and not written! On changes, the #frameData member needs to be
+       * modified instead.
        */
-      ByteCount dataPosition;
+      std::vector<ByteRange> frameDataRanges;
 
       /*!
-       * Number of data bytes in this Block Element.
-       */
-      ByteCount dataSize;
-
-      /*!
-       * The actual data bytes of this Block Element.
+       * The actual data bytes of contained frames in this Block Element.
        *
        * This member is only filled if the ReadOptions#readMediaData is set on reading this Element.
        * This member is requires for the Block Element to be able to be written back out.
        */
-      std::vector<std::byte> data;
-
-      /*!
-       * The informational block header data
-       */
-      BlockHeader header;
+      std::vector<std::byte> frameData;
 
       constexpr auto operator<=>(const BaseBlockElement &) const noexcept = default;
 
-      BML_DEFINE_PRINT(BaseBlockElement, crc32, dataPosition, dataSize, header, voidElements)
+      BML_DEFINE_PRINT(BaseBlockElement, crc32, header, frameDataRanges, frameData, voidElements)
       std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
 
     protected:
@@ -131,9 +105,9 @@ namespace bml::ebml::mkv {
   template <ElementId Id>
   struct UUIDElement : public detail::BaseUUIDElement {
     static constexpr ElementId ID = Id;
-    static constexpr BitCount minNumBits() { return bml::ebml::detail::calcElementSize(ID, NUM_BYTES); };
-    static constexpr BitCount maxNumBits() { return bml::ebml::detail::calcElementSize(ID, NUM_BYTES); }
-    constexpr BitCount numBits() const noexcept { return bml::ebml::detail::calcElementSize(ID, NUM_BYTES); }
+    static constexpr ByteCount minNumBits() { return bml::ebml::detail::calcElementSize(ID, NUM_BYTES); };
+    static constexpr ByteCount maxNumBits() { return bml::ebml::detail::calcElementSize(ID, NUM_BYTES); }
+    constexpr ByteCount numBits() const noexcept { return bml::ebml::detail::calcElementSize(ID, NUM_BYTES); }
 
     UUIDElement &operator=(std::array<std::byte, 16> val) {
       value = std::move(val);
@@ -1002,6 +976,8 @@ namespace bml::ebml::mkv {
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
   };
 
+  class FrameView;
+
   /**
    * Container for a whole Matroska stream/file.
    */
@@ -1028,6 +1004,91 @@ namespace bml::ebml::mkv {
 
     BML_DEFINE_PRINT(Matroska, header, segment)
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
+
+    /*!
+     * Returns a pointer to the TrackEntry for the given track number, if present in this Matroska container.
+     */
+    const TrackEntry *getTrackEntry(uint32_t trackNumber) const;
+
+    /*!
+     * Returns an input range producing each stored Frame of the given Track number.
+     */
+    FrameView viewFrames(uint32_t trackNumber) const;
+  };
+
+  /*!
+   * A Frame of data of a single Track, as defined in the Matroska Block specification.
+   */
+  struct Frame {
+    /*!
+     * Range of the Frame's data relative to the start of the read byte source.
+     */
+    ByteRange dataRange;
+
+    /*!
+     * The actual data bytes of this Frame.
+     *
+     * This member is only filled if the underlying Block Element was read with data.
+     *
+     * NOTE: Since this directly references the underlying Block Element's data member, care needs to be taken to not
+     * access this member after freeing the underlying Block Element.
+     */
+    std::span<const std::byte> data;
+  };
+
+  /*!
+   * Read-only view for accessing Frames of a specific Track within a Matroska object.
+   */
+  class FrameView : public std::ranges::view_base {
+    struct Sentinel {};
+
+    class Iterator {
+    public:
+      using value_type = Frame;
+      using difference_type = std::ptrdiff_t;
+
+      explicit Iterator() noexcept = default;
+      Iterator(std::span<const Cluster> clusters, uint32_t trackNum) noexcept;
+
+      Iterator &operator++() noexcept {
+        advance();
+        return *this;
+      }
+
+      Iterator operator++(int) noexcept {
+        auto copy = *this;
+        advance();
+        return copy;
+      }
+
+      Frame operator*() const noexcept;
+
+      bool operator==(const Iterator &other) const noexcept;
+      bool operator!=(const Iterator &other) const noexcept { return !(*this == other); }
+
+    private:
+      void advance() noexcept;
+
+      friend bool operator==(const Sentinel &, const Iterator &it) noexcept { return it.pendingClusters.empty(); }
+      friend bool operator!=(const Sentinel &, const Iterator &it) noexcept { return !it.pendingClusters.empty(); }
+
+    private:
+      std::span<const Cluster> pendingClusters;
+      const detail::BaseBlockElement *currentBlock;
+      uint32_t trackNumber;
+      uint8_t currentLaceIndex;
+    };
+
+  public:
+    constexpr FrameView(std::span<const Cluster> allClusters, uint32_t track) noexcept
+        : clusters(allClusters), trackNumber(track) {}
+
+    Iterator begin() const noexcept { return Iterator{clusters, trackNumber}; }
+    constexpr Sentinel end() const noexcept { return Sentinel{}; }
+
+  private:
+    std::span<const Cluster> clusters;
+    uint32_t trackNumber;
   };
 
 } // namespace bml::ebml::mkv

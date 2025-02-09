@@ -113,12 +113,13 @@ namespace bml::ebml {
     public:
       using value_type = T;
       using yaml_print_type = T;
-      static constexpr BitCount minNumBits() { return 0_bytes /* default value */; };
+      static constexpr ByteCount minNumBits() { return 0_bytes /* default value */; };
 
       constexpr BaseSimpleElement() noexcept = default;
       constexpr BaseSimpleElement(T val) : value(std::move(val)) {}
 
       constexpr auto operator<=>(const BaseSimpleElement &) const noexcept = default;
+      constexpr auto operator<=>(const value_type &val) const noexcept { return value <=> val; }
 
       constexpr T get() const noexcept { return value; }
       constexpr operator T() const noexcept { return value; }
@@ -162,6 +163,43 @@ namespace bml::ebml {
 
   } // namespace detail
 
+  /**
+   * Represents a Variable-Size Integer.
+   */
+  struct VariableSizeInteger {
+    using value_type = std::uintmax_t;
+    using yaml_print_type = value_type;
+
+    static constexpr ByteCount minNumBits() { return 1_bytes; };
+    static constexpr ByteCount maxNumBits() { return detail::requiredBytes(detail::VINTMAX.num * 8U / 7U); }
+    constexpr ByteCount numBits() const noexcept { return detail::requiredBytes(value * 8U / 7U); }
+
+    constexpr auto operator<=>(const VariableSizeInteger &) const noexcept = default;
+    constexpr auto operator<=>(value_type val) const noexcept { return value <=> val; }
+
+    constexpr value_type get() const noexcept { return value; }
+    constexpr operator value_type() const noexcept { return value; }
+    constexpr void set(value_type val) noexcept { value = val; }
+
+    constexpr VariableSizeInteger &operator=(value_type val) noexcept {
+      this->value = val;
+      return *this;
+    }
+
+    void read(bml::BitReader &reader, const ReadOptions & = {});
+    void write(BitWriter &writer) const;
+
+    friend std::ostream &operator<<(std::ostream &os, const VariableSizeInteger &val) {
+      return os << bml::printView(val.value);
+    }
+
+    std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const {
+      return bml::yaml::print(os, options, value);
+    }
+
+    value_type value;
+  };
+
   ////
   // Basic Element Types
   ////
@@ -173,12 +211,12 @@ namespace bml::ebml {
   struct BoolElement : public detail::BaseSimpleElement<bool> {
     static constexpr ElementId ID = Id;
     static constexpr bool DEFAULT = Default;
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, 1_bytes); }
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(ID, 1_bytes); }
 
     constexpr BoolElement() noexcept : detail::BaseSimpleElement<bool>(DEFAULT) {}
     explicit constexpr BoolElement(bool val) noexcept : detail::BaseSimpleElement<bool>(val) {}
 
-    constexpr BitCount numBits() const noexcept { return detail::calcElementSize(ID, 1_bytes, value == DEFAULT); }
+    constexpr ByteCount numBits() const noexcept { return detail::calcElementSize(ID, 1_bytes, value == DEFAULT); }
 
     BoolElement &operator=(bool val) {
       value = val;
@@ -193,12 +231,12 @@ namespace bml::ebml {
   struct SignedIntElement : public detail::BaseSimpleElement<intmax_t> {
     static constexpr ElementId ID = Id;
     static constexpr intmax_t DEFAULT = Default;
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, ByteCount{sizeof(intmax_t)}); }
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(ID, ByteCount{sizeof(intmax_t)}); }
 
     constexpr SignedIntElement() noexcept : detail::BaseSimpleElement<intmax_t>(DEFAULT) {}
     explicit constexpr SignedIntElement(intmax_t val) noexcept : detail::BaseSimpleElement<intmax_t>(val) {}
 
-    constexpr BitCount numBits() const noexcept {
+    constexpr ByteCount numBits() const noexcept {
       return detail::calcElementSize(ID, detail::requiredBytes(this->value), value == DEFAULT);
     }
 
@@ -215,12 +253,12 @@ namespace bml::ebml {
   struct UnsignedIntElement : public detail::BaseSimpleElement<uintmax_t> {
     static constexpr ElementId ID = Id;
     static constexpr uintmax_t DEFAULT = Default;
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, ByteCount{sizeof(uintmax_t)}); }
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(ID, ByteCount{sizeof(uintmax_t)}); }
 
     constexpr UnsignedIntElement() noexcept : detail::BaseSimpleElement<uintmax_t>(DEFAULT) {}
     explicit constexpr UnsignedIntElement(uintmax_t val) noexcept : detail::BaseSimpleElement<uintmax_t>(val) {}
 
-    constexpr BitCount numBits() const noexcept {
+    constexpr ByteCount numBits() const noexcept {
       return detail::calcElementSize(ID, detail::requiredBytes(this->value), value == DEFAULT);
     }
 
@@ -237,12 +275,12 @@ namespace bml::ebml {
   struct FloatElement : public detail::BaseSimpleElement<T> {
     static constexpr ElementId ID = Id;
     static constexpr T DEFAULT = Default;
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, ByteCount{sizeof(T)}); }
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(ID, ByteCount{sizeof(T)}); }
 
     constexpr FloatElement() noexcept : detail::BaseSimpleElement<T>(DEFAULT) {}
     explicit constexpr FloatElement(T val) noexcept : detail::BaseSimpleElement<T>(val) {}
 
-    constexpr BitCount numBits() const noexcept {
+    constexpr ByteCount numBits() const noexcept {
       return detail::calcElementSize(ID, std::is_same_v<T, double> ? 8_bytes : 4_bytes, this->value == DEFAULT);
     }
 
@@ -258,12 +296,12 @@ namespace bml::ebml {
   template <ElementId Id>
   struct DateElement : public detail::BaseSimpleElement<Date> {
     static constexpr ElementId ID = Id;
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, ByteCount{sizeof(intmax_t)}); }
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(ID, ByteCount{sizeof(intmax_t)}); }
 
     constexpr DateElement() noexcept : detail::BaseSimpleElement<Date>(detail::DATE_EPOCH) {}
     explicit constexpr DateElement(Date val) noexcept : detail::BaseSimpleElement<Date>(val) {}
 
-    constexpr BitCount numBits() const noexcept {
+    constexpr ByteCount numBits() const noexcept {
       return detail::calcElementSize(ID, detail::requiredBytes((value - detail::DATE_EPOCH).count()),
                                      value == detail::DATE_EPOCH);
     }
@@ -281,13 +319,13 @@ namespace bml::ebml {
   struct StringElement : public detail::BaseSimpleElement<std::string> {
     static constexpr ElementId ID = Id;
     static constexpr std::string DEFAULT = Default.value;
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, detail::VINTMAX); }
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(ID, detail::VINTMAX); }
 
     constexpr StringElement() noexcept : detail::BaseSimpleElement<std::string>(DEFAULT) {}
     explicit constexpr StringElement(std::string val) noexcept
         : detail::BaseSimpleElement<std::string>(std::move(val)) {}
 
-    constexpr BitCount numBits() const noexcept {
+    constexpr ByteCount numBits() const noexcept {
       return detail::calcElementSize(ID, ByteCount{value.size()}, value == DEFAULT);
     }
 
@@ -304,12 +342,12 @@ namespace bml::ebml {
   struct Utf8StringElement : public detail::BaseSimpleElement<T> {
     static constexpr ElementId ID = Id;
     static constexpr T DEFAULT{};
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, detail::VINTMAX); }
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(ID, detail::VINTMAX); }
 
     constexpr Utf8StringElement() noexcept : detail::BaseSimpleElement<T>(DEFAULT) {}
     explicit constexpr Utf8StringElement(T val) noexcept : detail::BaseSimpleElement<T>(std::move(val)) {}
 
-    constexpr BitCount numBits() const noexcept {
+    constexpr ByteCount numBits() const noexcept {
       return detail::calcElementSize(ID, ByteCount{this->value.size()}, this->value == DEFAULT);
     }
 
@@ -325,8 +363,8 @@ namespace bml::ebml {
   template <ElementId Id>
   struct BinaryElement : public detail::BaseSimpleElement<std::vector<std::byte>> {
     static constexpr ElementId ID = Id;
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, detail::VINTMAX); }
-    constexpr BitCount numBits() const noexcept {
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(ID, detail::VINTMAX); }
+    constexpr ByteCount numBits() const noexcept {
       return detail::calcElementSize(ID, ByteCount{value.size()}, value.empty());
     }
 
@@ -342,13 +380,13 @@ namespace bml::ebml {
   struct CRC32 : public detail::BaseSimpleElement<uint32_t> {
     static constexpr ElementId ID = 0xBF_id;
 
-    static constexpr BitCount minNumBits() { return detail::calcElementSize(ID, 4_bytes); }
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(ID, 4_bytes); }
+    static constexpr ByteCount minNumBits() { return detail::calcElementSize(ID, 4_bytes); }
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(ID, 4_bytes); }
 
     constexpr CRC32() noexcept : detail::BaseSimpleElement<uint32_t>() {}
     explicit constexpr CRC32(uint32_t val) noexcept : detail::BaseSimpleElement<uint32_t>(val) {}
 
-    constexpr BitCount numBits() const noexcept { return detail::calcElementSize(ID, 4_bytes); }
+    constexpr ByteCount numBits() const noexcept { return detail::calcElementSize(ID, 4_bytes); }
 
     CRC32 &operator=(uint32_t val) {
       this->value = val;
@@ -391,8 +429,8 @@ namespace bml::ebml {
    * This base class contains the CRC-32 and Void Elements which can occur globally as children of any Master Element.
    */
   struct MasterElement {
-    static constexpr BitCount minNumBits() { return 2_bytes /* 1 ID, 1 size */; };
-    static constexpr BitCount maxNumBits() { return detail::calcElementSize(0x1A45DFA3_id, detail::VINTMAX); }
+    static constexpr ByteCount minNumBits() { return 2_bytes /* 1 ID, 1 size */; };
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(0x1A45DFA3_id, detail::VINTMAX); }
 
     std::optional<CRC32> crc32;
     std::vector<Void> voidElements;

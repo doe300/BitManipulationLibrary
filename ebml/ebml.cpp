@@ -483,6 +483,12 @@ namespace bml::ebml {
     }
   } // namespace detail
 
+  void VariableSizeInteger::read(bml::BitReader &reader, const ReadOptions &) {
+    value = detail::readVariableSizeInteger(reader, false).first;
+  }
+
+  void VariableSizeInteger::write(BitWriter &writer) const { detail::writeVariableSizeInteger(writer, value); }
+
   // Contrary to the rest of the EBML values, the CRC-32 is stored in little endian!
   void CRC32::read(bml::BitReader &reader, const ReadOptions &) {
     auto numBytes = detail::readElementHeader(reader, ID);

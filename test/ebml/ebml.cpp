@@ -30,6 +30,7 @@ struct TestDynamicElement final : MasterElement {
 class TestBaseElements : public TestElementsBase {
 public:
   TestBaseElements() : TestElementsBase("BaseElements") {
+    TEST_ADD(TestBaseElements::testVariableSizeInteger);
     TEST_ADD(TestBaseElements::testBoolElement);
     TEST_ADD(TestBaseElements::testSignedIntElement);
     TEST_ADD(TestBaseElements::testUnsignedIntElement);
@@ -42,6 +43,18 @@ public:
     TEST_ADD(TestBaseElements::testCRC32Mismatch);
     TEST_ADD(TestBaseElements::testUnknownElement);
     TEST_ADD(TestBaseElements::testUnknownDataSize);
+  }
+
+  void testVariableSizeInteger() {
+    VariableSizeInteger elem{};
+    static_assert(VariableSizeInteger::maxNumBits() == 8_bytes);
+
+    testValueBitField(elem, 0U, {0x80}, "0", 1_bytes);
+    elem.set(112);
+    testValueBitField(elem, elem.get(), {0xF0}, "112", 1_bytes);
+
+    elem.set(34545234);
+    testValueBitField(elem, elem.get(), {0x12, 0x0F, 0x1E, 0x52}, "34545234", 4_bytes);
   }
 
   void testBoolElement() {
@@ -347,6 +360,14 @@ private:
                         std::string_view expectedString, bml::ByteCount expectedSize)
     requires(ValueBitField<Element, T>)
   {
+    testValueBitField<Element, T>(expectedElement, expectedValue, data, expectedString, expectedSize);
+  }
+
+  template <typename Element, typename T>
+  void testValueBitField(const Element &expectedElement, const T &expectedValue, const std::vector<uint8_t> &data,
+                         std::string_view expectedString, bml::ByteCount expectedSize)
+    requires(ValueBitField<Element, T>)
+  {
     Element element{};
     checkParseElement(std::as_bytes(std::span{data}), element);
     TEST_ASSERT_EQUALS(expectedElement, element);
@@ -363,6 +384,15 @@ private:
   void testValueElementDefaultValue(const Element &expectedElement, const std::vector<uint8_t> &data,
                                     std::string_view expectedString, bml::ByteCount expectedSize,
                                     T defaultValue = Element::DEFAULT)
+    requires(ValueBitField<Element, T>)
+  {
+    testValueBitFieldDefaultValue<Element, T>(expectedElement, data, expectedString, expectedSize, defaultValue);
+  }
+
+  template <typename Element, typename T = decltype(Element::DEFAULT)>
+  void testValueBitFieldDefaultValue(const Element &expectedElement, const std::vector<uint8_t> &data,
+                                     std::string_view expectedString, bml::ByteCount expectedSize,
+                                     T defaultValue = Element::DEFAULT)
     requires(ValueBitField<Element, T>)
   {
     Element element{};

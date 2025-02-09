@@ -5,6 +5,7 @@
 #include "cpptest-main.h"
 
 #include <algorithm>
+#include <ranges>
 
 using namespace bml;
 using namespace bml::ebml;
@@ -372,9 +373,8 @@ cuePoints:
   void testBlockGroup() {
     BlockGroup elem{};
 
-    elem.block.dataPosition = 4_bytes;
-    elem.block.dataSize = 8_bytes;
-    elem.block.data = toBytes({0x81, 0x00, 0x28, 0x82, 0xDE, 0xAD, 0xBE, 0xEF});
+    elem.block.frameDataRanges.push_back({9_bytes, 4_bytes});
+    elem.block.frameData = toBytes({0x00, 0xDE, 0xAD, 0xBE, 0xEF});
     elem.block.header.trackNumber = 1;
     elem.block.header.timestampOffset = 40;
     elem.block.header.keyframe = true;
@@ -382,11 +382,17 @@ cuePoints:
     elem.blockDuration = 0x0341;
     elem.referenceBlocks.emplace_back(0x29);
 
-    testElement<BlockGroup, true /* content */>(elem,
-                                                {0xA0, 0x91, 0xA1, 0x88, 0x81, 0x00, 0x28, 0x82, 0xDE, 0xAD, 0xBE, 0xEF,
-                                                 0x9B, 0x82, 0x03, 0x41, 0xFB, 0x81, 0x29},
+    testElement<BlockGroup, true /* content */>(elem, {0xA0, 0x92, 0xA1, 0x89, 0x81, 0x00, 0x28, 0x82, 0x00, 0xDE,
+                                                       0xAD, 0xBE, 0xEF, 0x9B, 0x82, 0x03, 0x41, 0xFB, 0x81, 0x29},
                                                 R"(block:
-  data: [0x81, 0x00, 0x28, 0x82, 0xde, 0xad, 0xbe, 0xef, ]
+  header:
+    trackNumber: 1
+    timestampOffset: 40
+    keyframe: true
+    invisible: false
+    lacing: 1
+    discardable: false
+  frames: 1
 blockDuration: 833
 referencePriority: 0
 referenceBlocks: [41, ])");
@@ -400,9 +406,8 @@ referenceBlocks: [41, ])");
 
     {
       SimpleBlock block{};
-      block.dataPosition = 22_bytes;
-      block.dataSize = 8_bytes;
-      block.data = toBytes({0x82, 0xFF, 0xFF, 0x00, 0xDE, 0xAD, 0xBE, 0xAF});
+      block.frameDataRanges.emplace_back(26_bytes, 4_bytes);
+      block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xAF});
       block.header.trackNumber = 2;
       block.header.timestampOffset = -1;
       elem.simpleBlocks.push_back(std::move(block));
@@ -410,9 +415,8 @@ referenceBlocks: [41, ])");
 
     {
       BlockGroup group{};
-      group.block.dataPosition = 34_bytes;
-      group.block.dataSize = 8_bytes;
-      group.block.data = toBytes({0x81, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF});
+      group.block.frameDataRanges.emplace_back(38_bytes, 4_bytes);
+      group.block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xEF});
       group.block.header.trackNumber = 1;
       group.block.header.timestampOffset = 0;
       group.blockDuration = 0x0341;
@@ -428,10 +432,24 @@ referenceBlocks: [41, ])");
 position: 5996036
 prevSize: 241387
 simpleBlocks:
-  - data: [0x82, 0xff, 0xff, 0x00, 0xde, 0xad, 0xbe, 0xaf, ]
+  - header:
+      trackNumber: 2
+      timestampOffset: -1
+      keyframe: false
+      invisible: false
+      lacing: 0
+      discardable: false
+    frames: 1
 blockGroups:
   - block:
-      data: [0x81, 0x00, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef, ]
+      header:
+        trackNumber: 1
+        timestampOffset: 0
+        keyframe: false
+        invisible: false
+        lacing: 0
+        discardable: false
+      frames: 1
     blockDuration: 833
     referencePriority: 0
     referenceBlocks: [41, ])");
@@ -503,16 +521,14 @@ blockGroups:
       cluster.position = 0x501646;
 
       SimpleBlock block{};
-      block.dataPosition = 224_bytes;
-      block.dataSize = 11_bytes;
-      block.data = toBytes({0x81, 0x00, 0x02, 0x00, 0xA2, 0x82, 0xFF, 0xF8, 0x80, 0xC4, 0x44});
+      block.frameDataRanges.emplace_back(228_bytes, 7_bytes);
+      block.frameData = toBytes({0xA2, 0x82, 0xFF, 0xF8, 0x80, 0xC4, 0x44});
       block.header.trackNumber = 1;
       block.header.timestampOffset = 2;
       cluster.simpleBlocks.push_back(std::move(block));
 
-      block.dataPosition = 237_bytes;
-      block.dataSize = 8_bytes;
-      block.data = toBytes({0x82, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xAF});
+      block.frameDataRanges.emplace_back(241_bytes, 4_bytes);
+      block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xAF});
       block.header.trackNumber = 2;
       block.header.timestampOffset = 0;
       cluster.simpleBlocks.push_back(std::move(block));
@@ -654,8 +670,22 @@ clusters:
   - timestamp: 16000
     position: 5248582
     simpleBlocks:
-      - data: [0x81, 0x00, 0x02, 0x00, 0xa2, 0x82, 0xff, 0xf8, 0x80, 0xc4, 0x44, ]
-      - data: [0x82, 0x00, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xaf, ]
+      - header:
+          trackNumber: 1
+          timestampOffset: 2
+          keyframe: false
+          invisible: false
+          lacing: 0
+          discardable: false
+        frames: 1
+      - header:
+          trackNumber: 2
+          timestampOffset: 0
+          keyframe: false
+          invisible: false
+          lacing: 0
+          discardable: false
+        frames: 1
 tags:
   - crc32: 0x2bc50f9c
     tags:
@@ -698,15 +728,13 @@ tags:
       cluster.position = 0x501646;
 
       SimpleBlock block{};
-      block.dataPosition = 33_bytes;
-      block.dataSize = 11_bytes;
-      block.data = toBytes({0x83, 0x00, 0x00, 0x00, 0xA2, 0x82, 0xFF, 0xF8, 0x80, 0xC4, 0x44});
+      block.frameDataRanges.emplace_back(37_bytes, 7_bytes);
+      block.frameData = toBytes({0xA2, 0x82, 0xFF, 0xF8, 0x80, 0xC4, 0x44});
       block.header.trackNumber = 3;
       cluster.simpleBlocks.push_back(std::move(block));
 
-      block.dataPosition = 46_bytes;
-      block.dataSize = 8_bytes;
-      block.data = toBytes({0x81, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xAF});
+      block.frameDataRanges.emplace_back(50_bytes, 4_bytes);
+      block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xAF});
       block.header.trackNumber = 1;
       cluster.simpleBlocks.push_back(std::move(block));
       expectedSegment.clusters.push_back(std::move(cluster));
@@ -750,4 +778,219 @@ private:
   }
 };
 
-void registerMkvTestSuites() { Test::registerSuite(Test::newInstance<TestMkvElements>, "mkv"); }
+class TestMkvFrames : public TestElementsBase {
+public:
+  TestMkvFrames() : TestElementsBase("MkvFrames") {
+    TEST_ADD(TestMkvFrames::testBlockHeader);
+    TEST_ADD(TestMkvFrames::testBlockNoLacing);
+    TEST_ADD(TestMkvFrames::testBlockXiphLacing);
+    TEST_ADD(TestMkvFrames::testBlockFixedLacing);
+    TEST_ADD(TestMkvFrames::testBlockEBMLLacing);
+    TEST_ADD(TestMkvFrames::testFrameView);
+  }
+
+  void testBlockHeader() {
+    BlockHeader header{};
+    testValue(header, {0x80, 0x00, 0x00, 0x00}, "trackNumber: 0\ntimestampOffset: 0");
+
+    header.trackNumber = 1012;
+    header.timestampOffset = -112;
+    header.keyframe = true;
+    header.invisible = true;
+    header.lacing = BlockHeader::Lacing::FIXED_SIZE;
+    header.discardable = true;
+
+    testValue(header, {0x43, 0xF4, 0xFF, 0x90, 0b10001101}, R"(trackNumber: 1012
+timestampOffset: -112
+keyframe: true
+invisible: true
+lacing: 2
+discardable: true)");
+  }
+
+  void testBlockNoLacing() {
+    SimpleBlock block{};
+    block.frameDataRanges.push_back({6_bytes, 4_bytes});
+    block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xEF});
+    TEST_ASSERT_EQUALS(BlockHeader::Lacing::NONE, block.header.lacing);
+
+    testValue(block, {0xA3, 0x88, 0x80, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF}, R"(header:
+  trackNumber: 0
+  timestampOffset: 0
+frames:
+  - offset: 6
+    size: 4)");
+  }
+
+  void testBlockXiphLacing() {
+    SimpleBlock block{};
+    block.header.lacing = BlockHeader::Lacing::XIPH;
+    block.frameDataRanges.push_back({9_bytes, 4_bytes});
+    block.frameDataRanges.push_back({13_bytes, 2_bytes});
+    block.frameDataRanges.push_back({15_bytes, 6_bytes});
+    block.frameData =
+        toBytes({0x02, 0x04, 0x2, 0xDE, 0xAD, 0xBE, 0xEF, 0xB0, 0x0B, 0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0B});
+
+    testValue(block, {0xA3, 0x93, 0x80, 0x00, 0x00, 0x02, 0x02, 0x04, 0x2,  0xDE, 0xAD,
+                      0xBE, 0xEF, 0xB0, 0x0B, 0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0B},
+              R"(header:
+  trackNumber: 0
+  timestampOffset: 0
+  lacing: 1
+frames:
+  - offset: 9
+    size: 4
+  - offset: 13
+    size: 2
+  - offset: 15
+    size: 6)");
+  }
+
+  void testBlockFixedLacing() {
+    SimpleBlock block{};
+    block.header.lacing = BlockHeader::Lacing::FIXED_SIZE;
+    block.frameDataRanges.push_back({7_bytes, 4_bytes});
+    block.frameDataRanges.push_back({11_bytes, 4_bytes});
+    block.frameData = toBytes({0x01, 0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF});
+
+    testValue(block, {0xA3, 0x8D, 0x80, 0x00, 0x00, 0x04, 0x01, 0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF},
+              R"(header:
+  trackNumber: 0
+  timestampOffset: 0
+  lacing: 2
+frames:
+  - offset: 7
+    size: 4
+  - offset: 11
+    size: 4)");
+  }
+
+  void testBlockEBMLLacing() {
+    SimpleBlock block{};
+    block.header.lacing = BlockHeader::Lacing::EBML;
+    block.frameDataRanges.push_back({9_bytes, 4_bytes});
+    block.frameDataRanges.push_back({13_bytes, 2_bytes});
+    block.frameDataRanges.push_back({15_bytes, 6_bytes});
+    block.frameData =
+        toBytes({0x02, 0x84, 0xBD, 0xDE, 0xAD, 0xBE, 0xEF, 0xB0, 0x0B, 0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0B});
+
+    testValue(block, {0xA3, 0x93, 0x80, 0x00, 0x00, 0x06, 0x02, 0x84, 0xBD, 0xDE, 0xAD,
+                      0xBE, 0xEF, 0xB0, 0x0B, 0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0B},
+              R"(header:
+  trackNumber: 0
+  timestampOffset: 0
+  lacing: 3
+frames:
+  - offset: 9
+    size: 4
+  - offset: 13
+    size: 2
+  - offset: 15
+    size: 6)");
+  }
+
+  void testFrameView() {
+    Matroska mkv{};
+
+    {
+      Cluster cluster{};
+      cluster.timestamp = 1000;
+      {
+        SimpleBlock block{};
+        block.header.trackNumber = 2;
+        block.header.timestampOffset = -42;
+        block.frameDataRanges.push_back({10_bytes, 4_bytes});
+        block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xEF});
+        cluster.simpleBlocks.push_back(std::move(block));
+      }
+      {
+        SimpleBlock block{};
+        block.header.trackNumber = 1;
+        block.header.timestampOffset = -22;
+        block.frameDataRanges.push_back({15_bytes, 4_bytes});
+        block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xEF});
+        cluster.simpleBlocks.push_back(std::move(block));
+      }
+      {
+        BlockGroup group{};
+        group.block.header.trackNumber = 2;
+        group.block.header.timestampOffset = -7;
+        group.block.header.lacing = BlockHeader::Lacing::XIPH;
+        group.block.frameDataRanges.push_back({20_bytes, 4_bytes});
+        group.block.frameDataRanges.push_back({24_bytes, 2_bytes});
+        group.block.frameDataRanges.push_back({26_bytes, 6_bytes});
+        group.block.frameData =
+            toBytes({0x02, 0x04, 0x2, 0xDE, 0xAD, 0xBE, 0xEF, 0xB0, 0x0B, 0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0B});
+        cluster.blockGroups.push_back(std::move(group));
+      }
+      mkv.segment.clusters.push_back(std::move(cluster));
+    }
+
+    {
+      Cluster cluster{};
+      cluster.timestamp = 2000;
+      {
+        BlockGroup group{};
+        group.block.header.trackNumber = 1;
+        group.block.header.timestampOffset = -70;
+        group.block.header.lacing = BlockHeader::Lacing::EBML;
+        group.block.frameDataRanges.push_back({30_bytes, 4_bytes});
+        group.block.frameDataRanges.push_back({34_bytes, 2_bytes});
+        group.block.frameDataRanges.push_back({36_bytes, 6_bytes});
+        group.block.frameData =
+            toBytes({0x02, 0x84, 0xBD, 0xDE, 0xAD, 0xBE, 0xEF, 0xB0, 0x0B, 0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0B});
+        cluster.blockGroups.push_back(std::move(group));
+      }
+      {
+        BlockGroup group{};
+        group.block.header.trackNumber = 2;
+        group.block.header.timestampOffset = -50;
+        group.block.header.lacing = BlockHeader::Lacing::EBML;
+        group.block.frameDataRanges.push_back({40_bytes, 4_bytes});
+        group.block.frameDataRanges.push_back({44_bytes, 2_bytes});
+        group.block.frameDataRanges.push_back({46_bytes, 6_bytes});
+        group.block.frameData =
+            toBytes({0x02, 0x84, 0xBD, 0xDE, 0xAD, 0xBE, 0xEF, 0xB0, 0x0B, 0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0B});
+        cluster.blockGroups.push_back(std::move(group));
+      }
+      {
+        SimpleBlock block{};
+        block.header.trackNumber = 2;
+        block.header.timestampOffset = 117;
+        block.header.lacing = BlockHeader::Lacing::FIXED_SIZE;
+        block.frameDataRanges.push_back({50_bytes, 4_bytes});
+        block.frameDataRanges.push_back({54_bytes, 4_bytes});
+        block.frameData = toBytes({0x01, 0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF});
+        cluster.simpleBlocks.push_back(std::move(block));
+      }
+      mkv.segment.clusters.push_back(std::move(cluster));
+    }
+
+    const std::vector<ByteRange> EXPECTED_RANGES = {{10_bytes, 4_bytes}, {20_bytes, 4_bytes}, {24_bytes, 2_bytes},
+                                                    {26_bytes, 6_bytes}, {40_bytes, 4_bytes}, {44_bytes, 2_bytes},
+                                                    {46_bytes, 6_bytes}, {50_bytes, 4_bytes}, {54_bytes, 4_bytes}};
+    auto tmp = mkv.viewFrames(2U) | std::views::transform([](const Frame &frame) { return frame.dataRange; }) |
+               std::views::common;
+    std::vector<ByteRange> dataRanges(tmp.begin(), tmp.end());
+    TEST_ASSERT_EQUALS(EXPECTED_RANGES, dataRanges);
+  }
+
+private:
+  template <typename Element>
+  void testValue(const Element &expectedElement, const std::vector<uint8_t> &data,
+                 std::string_view expectedYAMLString) {
+    Element element{};
+    checkParseElement<Element, true>(std::as_bytes(std::span{data}), element);
+    TEST_ASSERT_EQUALS(expectedElement, element);
+
+    checkWriteElement(std::as_bytes(std::span{data}), expectedElement);
+    checkPrintYAMLElement<Element, bml::yaml::PrintFlags::HIDE_DEFAULT>(expectedElement, expectedYAMLString);
+    checkSkipElement<Element>(std::as_bytes(std::span{data}));
+    checkCopyElement<Element>(std::as_bytes(std::span{data}));
+  }
+};
+
+void registerMkvTestSuites() {
+  Test::registerSuite(Test::newInstance<TestMkvElements>, "mkv");
+  Test::registerSuite(Test::newInstance<TestMkvFrames>, "frames");
+}

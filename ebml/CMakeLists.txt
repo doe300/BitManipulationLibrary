@@ -1,4 +1,4 @@
-add_library(ebml ebml.cpp mkv.cpp)
+add_library(ebml ebml.cpp frames.cpp mkv.cpp)
 target_include_directories(ebml INTERFACE .)
 target_link_libraries(ebml PUBLIC bml)
 

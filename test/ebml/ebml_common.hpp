@@ -10,7 +10,7 @@ struct TestElementsBase : public Test::Suite {
 protected:
   TestElementsBase(const std::string &name) : Test::Suite(name) {}
 
-  template <bml::ebml::EBMLElement T, bool ReadContent = false>
+  template <typename T, bool ReadContent = false>
   void checkParseElement(std::span<const std::byte> data, T &outElement) {
     bml::BitReader reader{data};
     bml::ebml::ReadOptions options{};
@@ -42,13 +42,14 @@ protected:
     TEST_ASSERT_EQUALS(expectedVal, ss.str());
   }
 
-  template <typename T>
+  template <typename T,
+            bml::yaml::PrintFlags Flags = bml::yaml::PrintFlags::HIDE_EMPTY | bml::yaml::PrintFlags::HIDE_DETAILS>
   void checkPrintYAMLElement(const T &val, std::string_view expectedVal)
     requires(bml::Printable<T>)
   {
     std::stringstream ss{};
     bml::yaml::Options opts{};
-    opts.flags = bml::yaml::PrintFlags::HIDE_EMPTY | bml::yaml::PrintFlags::HIDE_DETAILS;
+    opts.flags = Flags;
     bml::yaml::print(ss, opts, val);
     TEST_ASSERT_EQUALS(expectedVal, ss.str());
   }

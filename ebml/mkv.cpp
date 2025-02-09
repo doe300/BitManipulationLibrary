@@ -1,6 +1,7 @@
 
 #include "mkv.hpp"
 
+#include <algorithm>
 #include <format>
 
 namespace bml::ebml::detail {
@@ -9,32 +10,29 @@ namespace bml::ebml::detail {
 
 namespace bml::ebml::mkv {
 
+  extern std::vector<ByteRange> readFrameRanges(BitReader &reader, const BlockHeader &header,
+                                                const ByteRange &dataRange);
+
   void BlockHeader::read(bml::BitReader &reader, const ReadOptions & /* options */) {
-    trackNumber =
-        static_cast<uint32_t>(bml::ebml::detail::readVariableSizeInteger(reader, false /* no prefix */).first);
-    timestampOffset = std::bit_cast<int16_t>(reader.read<uint16_t>(2_bytes));
-    keyframe = reader.read();
-    reader.skip(3_bits);
-    invisible = reader.read();
-    lacing = reader.read<Lacing>(2_bits);
-    discardable = reader.read();
+    bml::detail::readMembers(reader, *this);
   }
+  void BlockHeader::write(BitWriter &writer) const { bml::detail::writeMembers(writer, *this); }
 
   std::ostream &BlockHeader::printYAML(std::ostream &os, const bml::yaml::Options &options) const {
     using namespace bml::yaml;
-    bml::yaml::detail::printMember(os, options, true /* first member */, "trackNumber, timestampOffset", trackNumber,
-                                   timestampOffset);
+    bml::yaml::detail::printMember(os, options, true /* first member */, "trackNumber, timestampOffset",
+                                   trackNumber.get(), timestampOffset.get());
     if (keyframe || !options.hasFlags(PrintFlags::HIDE_DEFAULT)) {
-      bml::yaml::detail::printMember(os, options, false, "keyframe", keyframe);
+      bml::yaml::detail::printMember(os, options, false, "keyframe", keyframe.get());
     }
     if (invisible || !options.hasFlags(PrintFlags::HIDE_DEFAULT)) {
-      bml::yaml::detail::printMember(os, options, false, "invisible", invisible);
+      bml::yaml::detail::printMember(os, options, false, "invisible", invisible.get());
     }
     if (lacing != Lacing::NONE || !options.hasFlags(PrintFlags::HIDE_DEFAULT)) {
-      bml::yaml::detail::printMember(os, options, false, "lacing", lacing);
+      bml::yaml::detail::printMember(os, options, false, "lacing", lacing.get());
     }
     if (discardable || !options.hasFlags(PrintFlags::HIDE_DEFAULT)) {
-      bml::yaml::detail::printMember(os, options, false, "discardable", discardable);
+      bml::yaml::detail::printMember(os, options, false, "discardable", discardable.get());
     }
     return os;
   }
@@ -72,40 +70,40 @@ namespace bml::ebml::mkv {
     }
 
     void BaseBlockElement::readValue(BitReader &reader, ElementId id, const ReadOptions &options) {
-      dataSize = ebml::detail::readElementHeader(reader, id);
-      dataPosition = bml::ebml::detail::getUnderlyingReader(reader).position().divide<8>();
+      auto blockSize = ebml::detail::readElementHeader(reader, id);
+      auto endPos = reader.position() + blockSize;
+      header.read(reader);
+      auto dataSize = (endPos - reader.position()).divide<8>();
 
+      auto blockDataOffset = bml::ebml::detail::getUnderlyingReader(reader).position().divide<8>();
       if (options.readMediaData) {
-        data.resize(dataSize.num);
-        reader.readBytesInto(std::span{data});
+        frameData.resize(dataSize.num);
+        reader.readBytesInto(std::span{frameData});
 
-        BitReader tmpReader{std::span{data}};
-        header.read(tmpReader);
+        BitReader tmpReader{std::span{frameData}};
+        frameDataRanges = readFrameRanges(tmpReader, header, {blockDataOffset, dataSize});
       } else {
-        auto endPos = reader.position() + dataSize;
-        header.read(reader);
+        frameDataRanges = readFrameRanges(reader, header, {blockDataOffset, dataSize});
         reader.skip(endPos - reader.position());
       }
     }
 
     void BaseBlockElement::writeValue(BitWriter &writer, ElementId id) const {
-      ebml::detail::writeElementHeader(writer, id, dataSize);
-      writer.writeBytes(std::span{data});
+      ebml::detail::writeElementHeader(writer, id, header.numBits() + ByteCount{frameData.size()});
+      header.write(writer);
+      writer.writeBytes(frameData);
     }
 
     std::ostream &BaseBlockElement::printYAML(std::ostream &os, const bml::yaml::Options &options) const {
-      if (!data.empty()) {
-        os << options.indentation(true /* first member */) << "data:";
-        bml::yaml::print(os, options, data);
-      } else {
-        os << options.indentation(true /* first member */) << "dataPosition: " << dataPosition.num;
-        os << options.indentation(false /* second member */) << "dataSize: " << dataSize.num;
+      os << options.indentation(true /* first member */) << "header:";
+      bml::yaml::print(os, options.nextLevel(false), header);
+      if (options.hasFlags(yaml::PrintFlags::HIDE_DETAILS)) {
+        os << options.indentation(false /* not first member */) << "frames:";
+        return bml::yaml::print(os, options.nextLevel(false), frameDataRanges.size());
       }
-      if (!options.hasFlags(yaml::PrintFlags::HIDE_DETAILS)) {
-        os << options.indentation(false /* not first member */) << "header:";
-        bml::yaml::print(os, options.nextLevel(false), header);
-      }
-      return os;
+
+      os << options.indentation(false /* second member */) << "frames:";
+      return bml::yaml::print(os, options.nextLevel(true), frameDataRanges);
     }
   } // namespace detail
 
@@ -169,7 +167,10 @@ namespace bml::ebml::mkv {
   BML_YAML_DEFINE_PRINT(Cluster, crc32, timestamp, position, prevSize, simpleBlocks, blockGroups, voidElements)
 
   std::ostream &operator<<(std::ostream &os, const Cluster &cluster) {
-    static const auto addBlockSizes = [](ByteCount size, const SimpleBlock &block) { return size + block.dataSize; };
+    static const auto addBlockSizes = [](ByteCount size, const SimpleBlock &block) {
+      return size + std::accumulate(block.frameDataRanges.begin(), block.frameDataRanges.end(), 0_bytes,
+                                    [](ByteCount sum, const ByteRange &range) { return sum + range.size; });
+    };
 
     os << "Cluster{";
     bml::detail::printMember(os, "crc32, timestamp, position, prevSize, voidElements", cluster.crc32, cluster.timestamp,
@@ -199,6 +200,23 @@ namespace bml::ebml::mkv {
   }
 
   BML_YAML_DEFINE_PRINT(Matroska, header, segment)
+
+  const TrackEntry *Matroska::getTrackEntry(uint32_t trackNumber) const {
+    if (!segment.tracks) {
+      return nullptr;
+    }
+    const auto &tracks = segment.tracks->trackEntries;
+    auto it = std::find_if(tracks.begin(), tracks.end(),
+                           [trackNumber](const TrackEntry &track) { return track.trackNumber.get() == trackNumber; });
+    if (it == tracks.end()) {
+      return nullptr;
+    }
+    return &*it;
+  }
+
+  FrameView Matroska::viewFrames(uint32_t trackNumber) const {
+    return FrameView{std::span{segment.clusters}, trackNumber};
+  }
 
   BML_EBML_DEFINE_IO(SeekHead, crc32, seeks, voidElements)
   BML_YAML_DEFINE_PRINT(SeekHead, crc32, seeks, voidElements)
