@@ -117,7 +117,9 @@ namespace bml {
     }
 
     template <typename V = value_type>
-    V checkValue(V val) {
+    V checkValue(V val)
+      requires std::unsigned_integral<V>
+    {
       if ((val & BitCount{N}.mask()) != val) {
         throw std::invalid_argument("Value '" + toHexString(val) + "' does not fit into a " + std::to_string(N) +
                                     "-Bit type");
@@ -162,6 +164,41 @@ namespace bml {
    */
   template <typename T = uint8_t, std::size_t ByteAlignment = 1>
   using Byte = Bytes<1, T, ByteAlignment>;
+
+  /**
+   * Mapping type for a signed (byte-)aligned fixed number of bytes, represented as a numerical value.
+   *
+   * The signed value is stored as two's complement.
+   *
+   * Reading and assignment of values has built-in bounds checks.
+   */
+  template <std::signed_integral T>
+  class SignedBytes : public Bytes<sizeof(T), T> {
+    using Base = Bytes<sizeof(T), T>;
+    using unsigned_type = std::make_unsigned_t<T>;
+
+  public:
+    void set(T val) { Base::value = checkValue(val); }
+
+    SignedBytes &operator=(Base::value_type val) {
+      Base::value = checkValue(val);
+      return *this;
+    }
+
+    void read(BitReader &reader) {
+      Base::value = std::bit_cast<T>(Base::checkValue(reader.readBytes<unsigned_type>(ByteCount{sizeof(T)})));
+    }
+
+    void write(BitWriter &writer) const {
+      writer.writeBytes(std::bit_cast<unsigned_type>(Base::value), ByteCount{sizeof(T)});
+    }
+
+  protected:
+    template <typename V = T>
+    V checkValue(V val) {
+      return std::bit_cast<V>(Base::checkValue(std::bit_cast<std::make_unsigned_t<V>>(val)));
+    }
+  };
 
   /**
    * Mapping type for a fixed number of bits with a fixed numerical value.
@@ -916,10 +953,10 @@ namespace bml {
     static void skip(BitReader &reader) { reader.skip(BitCount{Size}); }
     static void copy(BitReader &reader, BitWriter &writer) { copyBits(reader, writer, BitCount{Size}); }
 
-    friend std::ostream &operator<<(std::ostream &os, const PaddedValue &value)
+    friend std::ostream &operator<<(std::ostream &os, const PaddedValue &val)
       requires Printable<T>
     {
-      return os << printView(value.value);
+      return os << printView(val.value);
     }
 
   private:

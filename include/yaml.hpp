@@ -339,3 +339,15 @@ namespace bml::yaml {
     }
   } // namespace detail
 } // namespace bml::yaml
+
+namespace bml {
+  struct ByteRange;
+} // namespace bml
+
+namespace bml::yaml {
+  template <>
+  struct YAMLTraits<bml::ByteRange> {
+    static std::ostream &print(std::ostream &os, const Options &options, const bml::ByteRange &val);
+    static bool isEmpty(const bml::ByteRange &val);
+  };
+} // namespace bml::yaml

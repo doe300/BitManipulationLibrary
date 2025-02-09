@@ -1,5 +1,7 @@
 #include "yaml.hpp"
 
+#include "helper.hpp"
+
 #include <iomanip>
 
 namespace bml::detail {
@@ -63,4 +65,13 @@ namespace bml::yaml {
     prefixSpace(os, options);
     return bml::detail::printUtf8String(os, val);
   }
+
+  std::ostream &YAMLTraits<bml::ByteRange>::print(std::ostream &os, const Options &options, const bml::ByteRange &val) {
+    detail::printMember(os, options, true /* first member */, "offset", val.offset.num);
+    detail::printMember(os, options, false /* second member */, "size", val.size.num);
+    return os;
+  }
+
+  bool YAMLTraits<bml::ByteRange>::isEmpty(const bml::ByteRange &val) { return !val; }
+
 } // namespace bml::yaml

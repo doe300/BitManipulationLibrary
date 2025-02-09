@@ -191,6 +191,7 @@ public:
     TEST_ASSERT_EQUALS("0x005", writeBits(0x05, 9_bits));
     TEST_ASSERT_EQUALS("0b1010101", writeBits(0x55, 7_bits));
     TEST_ASSERT_EQUALS("0x55", writeBits(0x55, 8_bits));
+    TEST_ASSERT_EQUALS("0xab", writeBits(int8_t{-0x55}, 8_bits));
   }
 };
 

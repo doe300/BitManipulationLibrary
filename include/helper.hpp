@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <span>
 #include <string>
 #include <type_traits>
 
@@ -133,7 +134,6 @@ namespace bml {
   int32_t decodeNegaFibonacci(std::uintmax_t value);
 
   void writeBits(std::ostream &os, std::uintmax_t value, BitCount numBits);
-  void writeBits(std::ostream &os, std::intmax_t value, BitCount numBits);
 
   /**
    * Writes a string representation of the given value and number of valid bits to the given output stream.
@@ -145,7 +145,55 @@ namespace bml {
   void writeBits(std::ostream &os, T value, BitCount numBits = BitCount{bits<T>()})
     requires(std::integral<T> || std::is_enum_v<T>)
   {
-    auto tmp = static_cast<std::conditional_t<std::is_signed_v<T>, std::intmax_t, std::uintmax_t>>(value);
+    std::uintmax_t tmp;
+    if constexpr (std::is_same_v<T, bool>) {
+      tmp = static_cast<std::uintmax_t>(value);
+    } else if constexpr (std::is_enum_v<T>) {
+      tmp = static_cast<std::uintmax_t>(std::bit_cast<std::make_unsigned_t<std::underlying_type_t<T>>>(value));
+    } else {
+      tmp = static_cast<std::uintmax_t>(std::bit_cast<std::make_unsigned_t<T>>(value));
+    }
     writeBits(os, tmp, numBits);
   }
+
+  /**
+   * Representation of a subrange of some byte buffer.
+   */
+  struct ByteRange {
+    /*!
+     * Offset of the range data relative to the start of the underlying buffer.
+     */
+    ByteCount offset;
+
+    /*!
+     * Number of data bytes in the range.
+     */
+    ByteCount size;
+
+    constexpr auto operator<=>(const ByteRange &) const noexcept = default;
+    constexpr explicit operator bool() const noexcept { return static_cast<bool>(size); }
+
+    std::string toString() const;
+    friend std::ostream &operator<<(std::ostream &os, const ByteRange &range) { return os << range.toString(); }
+
+    /**
+     * Returns the sub-range with the given offset (relative to this range start) and (optional) size.
+     *
+     * If the sub-range offset lies outside of this range, an empty range is returned.
+     * If the sub-range reached out of this range, it it truncated to close with this range's end.
+     *
+     * NOTE: The resulting range's offset is relative to the underlying data start, not this range!
+     */
+    ByteRange subRange(ByteCount subOffset,
+                       ByteCount subSize = ByteCount{std::numeric_limits<std::size_t>::max()}) const noexcept;
+
+    /**
+     * Applies this range to the given input span by producing a subspan limited to the byte range represented by this
+     * object.
+     *
+     * NOTE: If this byte range does not fit into the given input span, an empty span is returned.
+     */
+    std::span<std::byte> applyTo(std::span<std::byte> source) const noexcept;
+    std::span<const std::byte> applyTo(std::span<const std::byte> source) const noexcept;
+  };
 } // namespace bml

@@ -204,8 +204,7 @@ namespace bml {
     return result;
   }
 
-  template <typename T>
-  static void writeBitsInner(std::ostream &os, T value, BitCount numBits) {
+  void writeBits(std::ostream &os, std::uintmax_t value, BitCount numBits) {
     if (numBits < 8_bits) {
       os << "0b";
       for (BitCount i{}; i < numBits; ++i) {
@@ -218,6 +217,31 @@ namespace bml {
     }
   }
 
-  void writeBits(std::ostream &os, std::uintmax_t value, BitCount numBits) { writeBitsInner(os, value, numBits); }
-  void writeBits(std::ostream &os, std::intmax_t value, BitCount numBits) { writeBitsInner(os, value, numBits); }
+  std::string ByteRange::toString() const {
+    if (!size) {
+      return "[]";
+    }
+    return "[" + offset.toString() + ", " + (offset + size).toString() + ")";
+  }
+
+  ByteRange ByteRange::subRange(ByteCount subOffset, ByteCount subSize) const noexcept {
+    if (subOffset >= size || !subSize) {
+      return {};
+    }
+    return {offset + subOffset, std::min(subSize, size - subOffset)};
+  }
+
+  std::span<std::byte> ByteRange::applyTo(std::span<std::byte> source) const noexcept {
+    if (source.empty() || !size || (offset + size).num > source.size()) {
+      return {};
+    }
+    return source.subspan(offset.num, size.num);
+  }
+
+  std::span<const std::byte> ByteRange::applyTo(std::span<const std::byte> source) const noexcept {
+    if (source.empty() || !size || (offset + size).num > source.size()) {
+      return {};
+    }
+    return source.subspan(offset.num, size.num);
+  }
 } // namespace bml

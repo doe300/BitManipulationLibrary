@@ -894,6 +894,7 @@ public:
     TEST_ADD(TestTypes::testBits);
     TEST_ADD(TestTypes::testBytes);
     TEST_ADD(TestTypes::testByte);
+    TEST_ADD(TestTypes::testSignedBytes);
     TEST_ADD(TestTypes::testFixedBits);
     TEST_ADD(TestTypes::testFixedBytes);
     TEST_ADD(TestTypes::testFixedByte);
@@ -933,6 +934,15 @@ public:
   void testByte() {
     checkValueBitfield<Byte<>>(uint8_t{17}, toBytes({0x11}), "0x11", 1_bytes, true);
     checkValueBitfield<Byte<EnumType>>(EnumType::BAR, toBytes({0x11}), "0x11", 1_bytes, true);
+  }
+
+  void testSignedBytes() {
+    checkValueBitfield<SignedBytes<int8_t>>(int8_t{-1}, toBytes({0xFF}), "0xff", 1_bytes, true);
+    checkValueBitfield<SignedBytes<int16_t>>(int16_t{2}, toBytes({0x00, 0x02}), "0x0002", 2_bytes, true);
+    checkValueBitfield<SignedBytes<int32_t>>(-123456, toBytes({0xFF, 0xFE, 0x1D, 0xC0}), "0xfffe1dc0", 4_bytes, true);
+    checkValueBitfield<SignedBytes<int64_t>>(-0x91A2B3C4855E6FL,
+                                             toBytes({0xFF, 0x6E, 0x5D, 0x4C, 0x3B, 0x7A, 0xA1, 0x91}),
+                                             "0xff6e5d4c3b7aa191", 8_bytes, true);
   }
 
   void testFixedBits() {
