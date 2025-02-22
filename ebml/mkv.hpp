@@ -12,7 +12,7 @@
  */
 namespace bml::ebml::mkv {
 
-  /*!
+  /**
    * Block header fields.
    */
   struct BlockHeader {
@@ -66,12 +66,12 @@ namespace bml::ebml::mkv {
      * Base type for all Block Element types to provide common read/write functionality.
      */
     struct BaseBlockElement : MasterElement {
-      /*!
+      /**
        * The block header data,
        */
       BlockHeader header;
 
-      /*!
+      /**
        * Ranges of the contained frame data relative to the start of the read byte source.
        *
        * NOTE: This value is informational only and not written! On changes, the #frameData member needs to be
@@ -79,7 +79,7 @@ namespace bml::ebml::mkv {
        */
       std::vector<ByteRange> frameDataRanges;
 
-      /*!
+      /**
        * The actual data bytes of contained frames in this Block Element.
        *
        * This member is only filled if the ReadOptions#readMediaData is set on reading this Element.
@@ -967,6 +967,7 @@ namespace bml::ebml::mkv {
     constexpr auto operator<=>(const Segment &) const noexcept = default;
 
     void read(bml::BitReader &reader, const ReadOptions &options = {});
+    [[nodiscard]] ChunkedReader readChunked(bml::BitReader &reader, ReadOptions options = {}) &;
     void write(bml::BitWriter &writer) const;
 
     static void skip(BitReader &reader);
@@ -993,6 +994,7 @@ namespace bml::ebml::mkv {
      * Reads the whole Matroska container from the underlying input.
      */
     void read(BitReader &reader, const ReadOptions &options);
+    [[nodiscard]] ChunkedReader readChunked(bml::BitReader &reader, ReadOptions options = {}) &;
 
     /**
      * Writes the whole Matroska container to the underlying output.
@@ -1005,27 +1007,27 @@ namespace bml::ebml::mkv {
     BML_DEFINE_PRINT(Matroska, header, segment)
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
 
-    /*!
+    /**
      * Returns a pointer to the TrackEntry for the given track number, if present in this Matroska container.
      */
     const TrackEntry *getTrackEntry(uint32_t trackNumber) const;
 
-    /*!
+    /**
      * Returns an input range producing each stored Frame of the given Track number.
      */
     FrameView viewFrames(uint32_t trackNumber) const;
   };
 
-  /*!
+  /**
    * A Frame of data of a single Track, as defined in the Matroska Block specification.
    */
   struct Frame {
-    /*!
+    /**
      * Range of the Frame's data relative to the start of the read byte source.
      */
     ByteRange dataRange;
 
-    /*!
+    /**
      * The actual data bytes of this Frame.
      *
      * This member is only filled if the underlying Block Element was read with data.
@@ -1036,7 +1038,7 @@ namespace bml::ebml::mkv {
     std::span<const std::byte> data;
   };
 
-  /*!
+  /**
    * Read-only view for accessing Frames of a specific Track within a Matroska object.
    */
   class FrameView : public std::ranges::view_base {

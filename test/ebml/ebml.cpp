@@ -1,7 +1,10 @@
 #include "ebml.hpp"
 #include "ebml_common.hpp"
+#include "errors.hpp"
 
 #include "cpptest-main.h"
+
+#include <deque>
 
 using namespace bml;
 using namespace bml::ebml;
@@ -9,19 +12,26 @@ using namespace bml::ebml;
 struct TestDynamicElement final : MasterElement {
   static constexpr ElementId ID{0xF0};
 
-  std::vector<Void> data;
-
   constexpr auto operator<=>(const TestDynamicElement &) const noexcept = default;
 
   void read(bml::BitReader &reader, const ReadOptions &options = {}) {
     bml::ebml::detail::readMasterElement(
         reader, ID, *this, options,
-        {bml::ebml::detail::wrapMemberReader(crc32), bml::ebml::detail::wrapMemberReader(data)}, {ID});
+        {bml::ebml::detail::wrapMemberReader(crc32), bml::ebml::detail::wrapMemberReader(voidElements)}, {ID});
   }
 
-  void write(bml::BitWriter &writer) const { bml::ebml::detail::writeMasterElement(writer, ID, data); }
+  ChunkedReader readChunked(bml::BitReader &reader, const ReadOptions &options = {}) {
+    return bml::ebml::detail::readMasterElementChunked(
+        reader, ID, *this, options,
+        {bml::ebml::detail::wrapMemberReader(crc32), bml::ebml::detail::wrapMemberReader(voidElements)}, {ID});
+  }
 
-  BML_DEFINE_PRINT(TestDynamicElement, data)
+  void write(bml::BitWriter &writer) const {
+    bml::ebml::detail::writeMasterElement(writer, ID, crc32);
+    bml::ebml::detail::writeMasterElement(writer, ID, voidElements);
+  }
+
+  BML_DEFINE_PRINT(TestDynamicElement, crc32, voidElements)
 
   static void skip(BitReader &reader) { bml::ebml::detail::skipElement(reader, {ID}); }
   static void copy(BitReader &reader, BitWriter &writer) { bml::ebml::detail::copyElement(reader, writer, {ID}); }
@@ -43,6 +53,13 @@ public:
     TEST_ADD(TestBaseElements::testCRC32Mismatch);
     TEST_ADD(TestBaseElements::testUnknownElement);
     TEST_ADD(TestBaseElements::testUnknownDataSize);
+    TEST_ADD(TestBaseElements::testChunkedReadEmpty);
+    TEST_ADD(TestBaseElements::testChunkedReadFillJustEnough);
+    TEST_ADD(TestBaseElements::testChunkedReadUnknownDataSize);
+    TEST_ADD(TestBaseElements::testChunkedReadPrematureEos);
+    TEST_ADD(TestBaseElements::testChunkedReadPartial);
+    TEST_ADD(TestBaseElements::testChunkedReadUnsymmetricUsage);
+    TEST_ADD(TestBaseElements::testConcurrentChunkedReaders);
   }
 
   void testVariableSizeInteger() {
@@ -316,8 +333,8 @@ public:
 
       TEST_ASSERT(elem.crc32);
       TEST_ASSERT_EQUALS(0x81C4E41BU, elem.crc32->get());
-      TEST_ASSERT_EQUALS(6U, elem.data.size());
-      TEST_ASSERT_EQUALS(5_bytes, elem.data[2].skipBytes);
+      TEST_ASSERT_EQUALS(6U, elem.voidElements.size());
+      TEST_ASSERT_EQUALS(5_bytes, elem.voidElements[2].skipBytes);
       TEST_ASSERT_FALSE(reader.hasMoreBytes());
 
       checkSkipElement<TestDynamicElement>(std::span{DATA}.subspan(0, DATA.size() - 4U));
@@ -332,8 +349,8 @@ public:
 
       TEST_ASSERT(elem.crc32);
       TEST_ASSERT_EQUALS(0x81C4E41BU, elem.crc32->get());
-      TEST_ASSERT_EQUALS(6U, elem.data.size());
-      TEST_ASSERT_EQUALS(5_bytes, elem.data[2].skipBytes);
+      TEST_ASSERT_EQUALS(6U, elem.voidElements.size());
+      TEST_ASSERT_EQUALS(5_bytes, elem.voidElements[2].skipBytes);
       TEST_ASSERT(reader.hasMoreBytes());
 
       checkSkipElement<TestDynamicElement>(std::span{DATA}, 55_bytes);
@@ -346,12 +363,261 @@ public:
       elem.read(reader, options);
 
       TEST_ASSERT_FALSE(elem.crc32);
-      TEST_ASSERT(elem.data.empty());
+      TEST_ASSERT(elem.voidElements.empty());
       TEST_ASSERT_FALSE(reader.hasMoreBytes());
 
       checkSkipElement<TestDynamicElement>(std::span{DATA}.subspan(0, 2));
       checkCopyElement<TestDynamicElement>(std::span{DATA}.subspan(0, 2));
     }
+  }
+
+  void testChunkedReadEmpty() {
+    bml::BitReader reader{std::span<const std::byte>{}};
+    TestDynamicElement elem{};
+    auto readMember = elem.readChunked(reader);
+    TEST_ASSERT(readMember);
+    TEST_THROWS(readMember(), EndOfStreamError);
+    TEST_ASSERT_FALSE(readMember);
+  }
+
+  void testChunkedReadFillJustEnough() {
+    // Check we can read full element when inserting just enough data to read next member Element
+    std::deque<uint8_t> buffer{};
+
+    bml::BitReader reader{[&buffer](std::byte &out) {
+      if (buffer.empty()) {
+        return false;
+      }
+      out = std::bit_cast<std::byte>(buffer.front());
+      buffer.pop_front();
+      return true;
+    }};
+    TestDynamicElement elem{};
+    auto readMember = elem.readChunked(reader);
+    TEST_ASSERT(readMember);
+
+    buffer = {0xF0, 0xB5, 0xBF, 0x84, 0x1B, 0xE4, 0xC4, 0x81};
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(CRC32::ID, readMember());
+    TEST_ASSERT(elem.crc32);
+    TEST_ASSERT_EQUALS(0x81C4E41BU, elem.crc32->get());
+
+    buffer = {0xEC, 0x83, 0x00, 0x00, 0x00};
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(3_bytes, elem.voidElements.back().skipBytes);
+
+    buffer = {0xEC, 0x84, 0x00, 0x00, 0x00, 0x00};
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(4_bytes, elem.voidElements.back().skipBytes);
+
+    buffer = {0xEC, 0x85, 0x00, 0x00, 0x00, 0x00, 0x00};
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(5_bytes, elem.voidElements.back().skipBytes);
+
+    buffer = {0xEC, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(8_bytes, elem.voidElements.back().skipBytes);
+
+    buffer = {0xEC, 0x87, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(7_bytes, elem.voidElements.back().skipBytes);
+    TEST_ASSERT(readMember);
+
+    buffer = {0xEC, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(8_bytes, elem.voidElements.back().skipBytes);
+
+    buffer = {0xF0, 0xFF}; // "next element"
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(ElementId{}, readMember());
+    TEST_ASSERT_FALSE(readMember);
+  }
+
+  void testChunkedReadUnknownDataSize() {
+    const auto DATA = toBytes({0xF0, 0xFF, 0xBF, 0x84, 0x1B, 0xE4, 0xC4, 0x81, 0xEC, 0x83, 0x00, 0x00, 0x00, 0xEC,
+                               0x84, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x85, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x88,
+                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x87, 0x00, 0x00, 0x00, 0x00,
+                               0x00, 0x00, 0x00, 0xEC, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00});
+
+    ReadOptions options{};
+    options.validateCRC32 = true;
+
+    // Terminated by end of stream
+    bml::BitReader reader{std::span{DATA}};
+    TestDynamicElement elem{};
+    auto readMember = elem.readChunked(reader, options);
+
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(CRC32::ID, readMember());
+    TEST_ASSERT(elem.crc32);
+    TEST_ASSERT_EQUALS(0x81C4E41BU, elem.crc32->get());
+
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(3_bytes, elem.voidElements.back().skipBytes);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(4_bytes, elem.voidElements.back().skipBytes);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(5_bytes, elem.voidElements.back().skipBytes);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(8_bytes, elem.voidElements.back().skipBytes);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(7_bytes, elem.voidElements.back().skipBytes);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(8_bytes, elem.voidElements.back().skipBytes);
+
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(ElementId{}, readMember());
+    TEST_ASSERT_FALSE(readMember);
+    TEST_ASSERT_FALSE(reader.hasMoreBytes());
+    TEST_ASSERT_EQUALS(6U, elem.voidElements.size());
+  }
+
+  void testChunkedReadPrematureEos() {
+    const auto DATA = toBytes({0xF0, 0xFF, 0xBF, 0x84, 0x1B, 0xE4, 0xC4, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00});
+
+    ReadOptions options{};
+    options.validateCRC32 = false;
+
+    // Terminated by end of stream
+    bml::BitReader reader{std::span{DATA}};
+    TestDynamicElement elem{};
+    auto readMember = elem.readChunked(reader, options);
+
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(CRC32::ID, readMember());
+    TEST_ASSERT(elem.crc32);
+    TEST_ASSERT_EQUALS(0x81C4E41BU, elem.crc32->get());
+
+    TEST_THROWS(readMember(), EndOfStreamError);
+    TEST_ASSERT_FALSE(readMember);
+  }
+
+  void testChunkedReadPartial() {
+    const auto DATA = toBytes({0xF0, 0xFF, 0xBF, 0x84, 0xFF, 0xFF, 0xFF, 0xFF, 0xEC, 0x83, 0x00, 0x00, 0x00, 0xEC,
+                               0x84, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x85, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x88,
+                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x87, 0x00, 0x00, 0x00, 0x00,
+                               0x00, 0x00, 0x00, 0xEC, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00});
+
+    ReadOptions options{};
+    options.validateCRC32 = true;
+
+    // Terminated by end of stream
+    bml::BitReader reader{std::span{DATA}};
+    TestDynamicElement elem{};
+    auto readMember = elem.readChunked(reader, options);
+
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(CRC32::ID, readMember());
+    TEST_ASSERT(elem.crc32);
+    TEST_ASSERT_EQUALS(0xFFFFFFFFU, elem.crc32->get());
+
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(3_bytes, elem.voidElements.back().skipBytes);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(4_bytes, elem.voidElements.back().skipBytes);
+    TEST_ASSERT(readMember);
+    // stop reading before reaching the end, chunked reader should be cleaned up properly
+    // also does not throw on invalid CRC, since we never reach the check
+  }
+
+  void testChunkedReadUnsymmetricUsage() {
+    // Check non-symmetric usage of the chunked reader's bool and call operators
+    const auto DATA = toBytes({0xF0, 0xFF, 0xBF, 0x84, 0x1B, 0xE4, 0xC4, 0x81, 0xEC, 0x83, 0x00, 0x00, 0x00, 0xEC,
+                               0x84, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x85, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x88,
+                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x87, 0x00, 0x00, 0x00, 0x00,
+                               0x00, 0x00, 0x00, 0xEC, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00});
+
+    ReadOptions options{};
+    options.validateCRC32 = true;
+
+    bml::BitReader reader{std::span{DATA}};
+    TestDynamicElement elem{};
+    auto readMember = elem.readChunked(reader, options);
+
+    // The bool operator does not read any bits
+    TEST_ASSERT_EQUALS(0_bits, reader.position());
+    TEST_ASSERT(readMember);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(0_bits, reader.position());
+
+    TEST_ASSERT_EQUALS(CRC32::ID, readMember());
+    TEST_ASSERT_EQUALS(0U, elem.voidElements.size());
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(1U, elem.voidElements.size());
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(2U, elem.voidElements.size());
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(3U, elem.voidElements.size());
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(4U, elem.voidElements.size());
+    auto before = reader.position();
+    TEST_ASSERT(readMember);
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(before, reader.position());
+
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(5U, elem.voidElements.size());
+    TEST_ASSERT_EQUALS(Void::ID, readMember());
+    TEST_ASSERT_EQUALS(6U, elem.voidElements.size());
+    TEST_ASSERT(readMember);
+    TEST_ASSERT_EQUALS(ElementId{}, readMember());
+    TEST_ASSERT_FALSE(readMember);
+  }
+
+  void testConcurrentChunkedReaders() {
+    // Check that we can read (and validate CRCs) from multiple chunked readers in parallel in one thread
+    const auto DATA1 = toBytes({0xF0, 0xFF, 0xBF, 0x84, 0x1B, 0xE4, 0xC4, 0x81, 0xEC, 0x83, 0x00, 0x00, 0x00, 0xEC,
+                                0x84, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x85, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x88,
+                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x87, 0x00, 0x00, 0x00, 0x00,
+                                0x00, 0x00, 0x00, 0xEC, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00});
+
+    const auto DATA2 = toBytes({0xF0, 0x98, 0xBF, 0x84, 0xDF, 0x53, 0xCB, 0x06, 0xEC, 0x83, 0x00, 0x00, 0x00,
+                                0xEC, 0x84, 0x00, 0x00, 0x00, 0x00, 0xEC, 0x85, 0x00, 0x00, 0x00, 0x00, 0x00});
+
+    bml::BitReader reader1{DATA1};
+    bml::BitReader reader2{DATA2};
+    bml::ebml::ReadOptions options{};
+    options.validateCRC32 = true;
+
+    TestDynamicElement elem1{};
+    TestDynamicElement elem2{};
+
+    auto read1 = elem1.readChunked(reader1, options);
+    auto read2 = elem2.readChunked(reader2, options);
+
+    while (read1 || read2) {
+      if (read1) {
+        read1();
+      }
+      if (read2) {
+        read2();
+      }
+    }
+
+    TEST_ASSERT(elem1.crc32);
+    TEST_ASSERT_EQUALS(0x81C4E41BU, elem1.crc32.value());
+    TEST_ASSERT_EQUALS(6U, elem1.voidElements.size());
+
+    TEST_ASSERT(elem2.crc32);
+    TEST_ASSERT_EQUALS(0x06CB53DFU, elem2.crc32.value());
+    TEST_ASSERT_EQUALS(3U, elem2.voidElements.size());
   }
 
 private:

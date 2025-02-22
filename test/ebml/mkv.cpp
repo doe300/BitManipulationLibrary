@@ -5,6 +5,7 @@
 #include "cpptest-main.h"
 
 #include <algorithm>
+#include <deque>
 #include <ranges>
 
 using namespace bml;
@@ -37,6 +38,7 @@ public:
     TEST_ADD(TestMkvElements::testCluster);
     TEST_ADD(TestMkvElements::testSegment);
     TEST_ADD(TestMkvElements::testUnknownSizeSegmentWithCluster);
+    TEST_ADD(TestMkvElements::testMatroskaChunked);
   }
 
   void testSeek() {
@@ -761,6 +763,84 @@ tags:
 
     checkSkipElement<Segment>(std::span{DATA});
     checkCopyElement<Segment>(std::span{DATA});
+  }
+
+  void testMatroskaChunked() {
+    std::deque<uint8_t> buffer{0x1a, 0x45, 0xdf, 0xa3, 0xa9, 0xBF, 0x84, 0x84, 0x3f, 0xc8, 0xf0, 0x42,
+                               0x86, 0x81, 0x02, 0x42, 0xf7, 0x81, 0x01, 0x42, 0xf2, 0x81, 0x04, 0x42,
+                               0xf3, 0x81, 0x08, 0x42, 0x82, 0x88, 0x6d, 0x61, 0x74, 0x72, 0x6f, 0x73,
+                               0x6b, 0x61, 0x42, 0x87, 0x81, 0x04, 0x42, 0x85, 0x81, 0x02};
+
+    bml::BitReader reader{[&buffer](std::byte &out) {
+      if (buffer.empty()) {
+        return false;
+      }
+      out = std::bit_cast<std::byte>(buffer.front());
+      buffer.pop_front();
+      return true;
+    }};
+    Matroska mkv{};
+    auto readChunked = mkv.readChunked(reader);
+
+    TEST_ASSERT(readChunked);
+    TEST_ASSERT_EQUALS(EBMLHeader::ID, readChunked());
+    TEST_ASSERT_EQUALS("matroska", mkv.header.docType.get());
+    TEST_ASSERT_EQUALS(4U, mkv.header.docTypeVersion);
+    TEST_ASSERT(buffer.empty());
+
+    buffer = {/* Segment */ 0x18, 0x53, 0x80, 0x67, 0xFF, /* Cues */
+              0x1C, 0x53, 0xBB, 0x6B, 0x97,
+              /* CRC32 */ 0xBF, 0x84, 0x33, 0xE9, 0x26, 0xF8,
+              /* CuePoint */
+              0xBB, 0x8F,
+              /* cueTime */ 0xB3, 0x82, 0xBB, 0xA9,
+              /* CueTrackPositions */
+              0xB7, 0x89,
+              /* cueTrack */ 0xF7, 0x81, 0x01,
+              /* cueClusterPosition */ 0xF1, 0x84, 0x01, 0x3C, 0x56, 0xB8,
+              /* Cluster (begin) */
+              0x1F, 0x43};
+    TEST_ASSERT(readChunked);
+    TEST_ASSERT_EQUALS(Cues::ID, readChunked());
+    TEST_ASSERT(mkv.segment.cues);
+    TEST_ASSERT_EQUALS(1U, mkv.segment.cues.value().cuePoints.size());
+    TEST_ASSERT_EQUALS(0xBBA9U, mkv.segment.cues.value().cuePoints.front().cueTime);
+    TEST_ASSERT_EQUALS(2U, buffer.size());
+
+    buffer.insert(buffer.end(), {/* Cluster (cont.) */ 0xB6, 0x75, 0xFF, /* CRC32 */ 0xBF, 0x84, 0x45, 0x38, 0xC8, 0x5E,
+                                 /* timestamp */ 0xE7, 0x82, 0x3E, 0x80,
+                                 /* position */ 0xA7, 0x83, 0x50, 0x16, 0x46,
+                                 /* SimpleBlock */
+                                 0xA3, 0x8B, 0x83, 0x00, 0x00, 0x00, 0xA2, 0x82, 0xFF, 0xF8, 0x80, 0xC4, 0x44,
+                                 /* SimpleBlock */
+                                 0xA3, 0x88, 0x81, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xAF});
+    TEST_ASSERT(readChunked);
+    TEST_ASSERT_EQUALS(Cluster::ID, readChunked());
+    TEST_ASSERT_EQUALS(1U, mkv.segment.clusters.size());
+    TEST_ASSERT_EQUALS(0x3E80, mkv.segment.clusters.front().timestamp);
+    TEST_ASSERT_EQUALS(0x501646, mkv.segment.clusters.front().position.value());
+    TEST_ASSERT(buffer.empty());
+
+    buffer = {/* Cluster */ 0x1F, 0x43, 0xB6, 0x75, 0xAC,
+              /* timestamp */
+              0xE7, 0x83, 0x03, 0x46, 0x34,
+              /* position */ 0xA7, 0x83, 0x5B, 0x7E, 0x04, 0xAB, 0x83, 0x03, 0xAE, 0xEB,
+              /* SimpleBlock */ 0xA3, 0x88, 0x82, 0xFF, 0xFF, 0x00, 0xDE, 0xAD, 0xBE, 0xAF,
+              /* BlockGroup */ 0xA0, 0x91,
+              /* Block */ 0xA1, 0x88, 0x81, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF,
+              /* blockDuration */ 0x9B, 0x82, 0x03, 0x41, 0xFB, 0x81, 0x29};
+    TEST_ASSERT(readChunked);
+    TEST_ASSERT_EQUALS(Cluster::ID, readChunked());
+    TEST_ASSERT_EQUALS(2U, mkv.segment.clusters.size());
+    TEST_ASSERT_EQUALS(214580U, mkv.segment.clusters.back().timestamp);
+    TEST_ASSERT_EQUALS(5996036U, mkv.segment.clusters.back().position.value());
+    TEST_ASSERT_EQUALS(241387U, mkv.segment.clusters.back().prevSize.value());
+
+    TEST_ASSERT(readChunked);
+    TEST_ASSERT_EQUALS(Segment::ID, readChunked());
+    TEST_ASSERT(readChunked);
+    TEST_ASSERT_EQUALS(ElementId{}, readChunked());
+    TEST_ASSERT_FALSE(readChunked);
   }
 
 private:

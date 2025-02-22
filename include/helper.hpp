@@ -160,12 +160,12 @@ namespace bml {
    * Representation of a subrange of some byte buffer.
    */
   struct ByteRange {
-    /*!
+    /**
      * Offset of the range data relative to the start of the underlying buffer.
      */
     ByteCount offset;
 
-    /*!
+    /**
      * Number of data bytes in the range.
      */
     ByteCount size;

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <bit>
 #include <chrono>
+#include <coroutine>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -482,6 +483,54 @@ namespace bml::ebml {
     std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
   };
 
+  /**
+   * A wrapper around functionality to read a Master Element Element-by-Element.
+   *
+   * NOTE: Since this reader modifies the associated Master Element in-place, it MUST NOT outlive the Master Element and
+   * the Master Element SHOULD NOT be modified/moved in the meantime!
+   *
+   * NOTE: In the current implementation, the underlying BitReader needs to have enough data available to read a full
+   * member Element, i.e. its byte source MUST NOT return EOF. Otherwise the chunked reader aborts reading!
+   *
+   * NOTE: When the chunked reader is created with the ReadOptions#validateCRC32 set, it will only be checked if the
+   * chunked reader is drained, i.e. read to its end. Partial reading of the associated Master Element will not invoke
+   * CRC validation.
+   */
+  class ChunkedReader {
+  public:
+    class promise_type;
+    using handle_type = std::coroutine_handle<promise_type>;
+
+    ChunkedReader(handle_type h) : handle(h) {}
+    ~ChunkedReader();
+
+    /**
+     * Checks whether this chunked reader is still active, e.g. there are more member Elements to read or the end of the
+     * associated Master Element has not yet been processed.
+     */
+    explicit operator bool();
+
+    /**
+     * Reads the next member Element into the associated Master Element and returns its ID.
+     *
+     * The Element itself is added to the appropriate member of the associated Master Element before this function
+     * returns.
+     *
+     * When reading the whole associated Master Element, this function should be called until this reader object
+     * evalutes to "false" via its contextual bool conversion operator.
+     *
+     * NOTE: Clients acting on the returned value (e.g. by accessing the associated member Element) should ignore any
+     * unknown Element IDs to allow for more fine-grained chunked reading in the future.
+     *
+     * Returns the ID of the Element read or an empty ID if no more members can be read, i.e. the end of the Master
+     * Element or the input data is reached.
+     */
+    ElementId operator()();
+
+  private:
+    handle_type handle;
+  };
+
 /**
  * Defines the implementations of the member functions to read/write the Master Element with the following signatures:
  *
@@ -518,7 +567,7 @@ namespace bml::ebml {
      */
     void writeElementHeader(BitWriter &writer, ElementId id, ByteCount contentSize);
 
-    /*!
+    /**
      * Skips the next Element in the input reader and returns the number of bytes skipped.
      *
      * The optional terminatingElementIds parameter can be used to support Master Elements with Unknown Data Size. Any
@@ -528,7 +577,7 @@ namespace bml::ebml {
      */
     ByteCount skipElement(BitReader &reader, const std::set<ElementId> &terminatingElementIds = {});
 
-    /*!
+    /**
      * Copies the next Element from the given input reader to the given output writer and returns the number of bytes
      * copied.
      *
@@ -548,8 +597,26 @@ namespace bml::ebml {
      * into this parameter.
      */
     void readMasterElement(BitReader &reader, ElementId id, MasterElement &master, const ReadOptions &options,
-                           const std::map<ElementId, std::function<void(BitReader &, const ReadOptions &)>> &members,
-                           const std::set<ElementId> &terminatingElementIds = {});
+                           std::map<ElementId, std::function<void(BitReader &, const ReadOptions &)>> &&members,
+                           std::set<ElementId> &&terminatingElementIds = {});
+    /**
+     * Reads the Master Element with the given ID from the given bit reader and reads all its given members.
+     *
+     * This function reads the (direct) member Elements one-by-one, allowing for chunked/partial reading of the Master
+     * Element.
+     *
+     * The optional terminatingElementIds parameter can be used to support Master Elements with Unknown Data Size. Any
+     * Element ID present in this list will finish reading into the current Master Element and return from this
+     * function. See https://www.rfc-editor.org/rfc/rfc8794.html#section-6.2 for which Element IDs need to be passed
+     * into this parameter.
+     *
+     * NOTE: The parent Master Element as well as the BitReader parameter MUST outlive the returned ChunkedReader
+     * object!
+     */
+    [[nodiscard]] ChunkedReader
+    readMasterElementChunked(BitReader &reader, ElementId id, MasterElement &master, ReadOptions options,
+                             std::map<ElementId, std::function<void(BitReader &, const ReadOptions &)>> &&members,
+                             std::set<ElementId> &&terminatingElementIds = {});
 
     /**
      * Writes the Master Element with the given ID to the given bit writer and all its members given.

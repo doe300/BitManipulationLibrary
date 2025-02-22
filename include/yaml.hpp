@@ -12,20 +12,20 @@
 
 namespace bml::yaml {
 
-  /*!
+  /**
    * Additional flags that can be specified for YAML printing.
    */
   enum class PrintFlags : uint32_t {
     NONE = 0x00,
-    /*!
+    /**
      * Don't print entries which are considered "empty" (e.g. empty optional values, empty containers, etc.)
      */
     HIDE_EMPTY = 0x01,
-    /*!
+    /**
      * Don't print entries which have a "default" value.
      */
     HIDE_DEFAULT = 0x02,
-    /*!
+    /**
      * Don't print some more detailed information.
      *
      * It is up to the type being printed to decide what "details" to omit.
@@ -73,7 +73,7 @@ namespace bml::yaml {
     }
   };
 
-  /*!
+  /**
    * Traits type to be specialized for custom types, enabling special handling:
    *
    * The presence of a static member function with the following signature enables printing as YAML value:
@@ -152,7 +152,7 @@ namespace bml::yaml {
       bml::yaml::YAMLTraits<Type>::SIMPLE_LIST == true;
     };
 
-    /*!
+    /**
      * Concept checking whether sequences of the given member type are listed as simple lists (e.g. "[a, b, d, c]") or
      * more complex multi-line lists.
      */

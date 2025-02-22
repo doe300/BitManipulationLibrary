@@ -1,18 +1,12 @@
 
 #include "mkv.hpp"
 
+#include "internal.hpp"
+
 #include <algorithm>
 #include <format>
 
-namespace bml::ebml::detail {
-  extern BitReader &getUnderlyingReader(BitReader &reader);
-} // namespace bml::ebml::detail
-
 namespace bml::ebml::mkv {
-
-  extern std::vector<ByteRange> readFrameRanges(BitReader &reader, const BlockHeader &header,
-                                                const ByteRange &dataRange);
-
   void BlockHeader::read(bml::BitReader &reader, const ReadOptions & /* options */) {
     bml::detail::readMembers(reader, *this);
   }
@@ -108,13 +102,20 @@ namespace bml::ebml::mkv {
   } // namespace detail
 
   void Segment::read(bml::BitReader &reader, const ReadOptions &options) {
+    auto readMember = readChunked(reader, options);
+    while (readMember) {
+      readMember();
+    }
+  }
+
+  ChunkedReader Segment::readChunked(bml::BitReader &reader, ReadOptions options) & {
     using namespace bml::ebml::detail;
-    readMasterElement(reader, ID, *this, options,
-                      {wrapMemberReader(crc32), wrapMemberReader(seekHeads), wrapMemberReader(info),
-                       wrapMemberReader(tracks), wrapMemberReader(cues), wrapMemberReader(chapters),
-                       wrapMemberReader(clusters), wrapMemberReader(attachments), wrapMemberReader(tags),
-                       wrapMemberReader(voidElements)},
-                      {EBMLHeader::ID, Segment::ID});
+    return readMasterElementChunked(reader, ID, *this, options,
+                                    {wrapMemberReader(crc32), wrapMemberReader(seekHeads), wrapMemberReader(info),
+                                     wrapMemberReader(tracks), wrapMemberReader(cues), wrapMemberReader(chapters),
+                                     wrapMemberReader(clusters), wrapMemberReader(attachments), wrapMemberReader(tags),
+                                     wrapMemberReader(voidElements)},
+                                    {EBMLHeader::ID, Segment::ID});
   }
 
   void Segment::write(BitWriter &writer) const {
@@ -192,6 +193,21 @@ namespace bml::ebml::mkv {
     header.read(reader, options);
     segment.read(reader, options);
     hasData = options.readMediaData;
+  }
+
+  ChunkedReader Matroska::readChunked(bml::BitReader &reader, ReadOptions options) & {
+    header.read(reader, options);
+    co_yield header.ID;
+
+    auto readSegmentMember = segment.readChunked(reader, options);
+    while (readSegmentMember) {
+      if (auto id = readSegmentMember(); id != ElementId{}) {
+        co_yield id;
+      }
+    }
+    // segment is read
+    co_yield Segment::ID;
+    co_return;
   }
 
   void Matroska::write(BitWriter &writer) const {

@@ -24,10 +24,7 @@ protected:
   template <typename T>
   void checkWriteElement(std::span<const std::byte> inputData, const T &element) {
     std::vector<std::byte> result{};
-    bml::BitWriter writer{[&](std::byte b) {
-      result.emplace_back(b);
-      return true;
-    }};
+    bml::BitWriter writer{result, bml::BitWriter::GROW};
     bml::write(writer, element);
 
     TEST_ASSERT_EQUALS(inputData, result);
@@ -77,8 +74,9 @@ protected:
   template <typename T>
   void checkCopyElement(std::span<const std::byte> data, bml::ByteCount numBytes = {}) {
     bml::BitReader reader{data};
-    std::vector<std::byte> outputData(data.size());
-    bml::BitWriter writer{outputData};
+    std::vector<std::byte> outputData{};
+    outputData.reserve(data.size());
+    bml::BitWriter writer{outputData, bml::BitWriter::GROW};
     TEST_THROWS_NOTHING(bml::copy<T>(reader, writer));
     TEST_ASSERT_EQUALS(reader.position(), writer.position());
     if (!numBytes) {

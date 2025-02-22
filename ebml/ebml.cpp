@@ -1,17 +1,18 @@
-
 #include "ebml.hpp"
 
 #include "debug.hpp"
+#include "internal.hpp"
 
 #include <array>
 #include <iomanip>
+#include <map>
 #include <span>
 #include <sstream>
 
 namespace bml::ebml {
   namespace detail {
 
-    extern const Date DATE_EPOCH = [] {
+    const Date DATE_EPOCH = [] {
       using namespace std::chrono_literals;
 
       return Date::clock::from_sys(static_cast<std::chrono::sys_days>(2001y / std::chrono::January / 1d));
@@ -48,12 +49,11 @@ namespace bml::ebml {
     }
 
     template <typename Func = void (*)(BitWriter &)>
-    static void writeElement(BitWriter &writer, ElementId id, Func &&writeContent) {
+    static void writeElement(BitWriter &writer, ElementId id, Func &&writeContent,
+                             std::size_t estimatedSize = sizeof(uintmax_t)) {
       std::vector<std::byte> buffer{};
-      BitWriter bufWriter{[&](std::byte b) {
-        buffer.push_back(b);
-        return true;
-      }};
+      buffer.reserve(estimatedSize);
+      BitWriter bufWriter{buffer, BitWriter::GROW};
       writeContent(bufWriter);
       bufWriter.flush();
 
@@ -325,13 +325,13 @@ namespace bml::ebml {
     public:
       explicit CRCScope(BitReader &reader, bool calculateCRC) {
         // Top-level CRC reader scope, initialize base underlying reader
-        if (!underlyingReader) {
-          underlyingReader = &reader;
+        auto *underlyingReader = &reader;
+        if (auto it = readerMap.find(&reader); it != readerMap.end()) {
+          underlyingReader = it->second;
         }
-        ++numOpenScopes;
 
         if (calculateCRC) {
-          wrappingReader = BitReader{[&, this](std::byte &out) {
+          wrappingReader = BitReader{[underlyingReader, &reader, this](std::byte &out) {
             // peek in the base underlying reader to not fill the cache of the parent CRC-calculating reader.
             if (!underlyingReader || !underlyingReader->hasMoreBytes()) {
               return false;
@@ -343,7 +343,7 @@ namespace bml::ebml {
           }};
         } else {
           // Simply wrap the base reader
-          wrappingReader = BitReader{[](std::byte &out) {
+          wrappingReader = BitReader{[underlyingReader](std::byte &out) {
             if (!underlyingReader || !underlyingReader->hasMoreBytes()) {
               return false;
             }
@@ -351,23 +351,19 @@ namespace bml::ebml {
             return true;
           }};
         }
+
+        readerMap[&wrappingReader] = underlyingReader;
       }
 
       CRCScope(const CRCScope &) = delete;
       CRCScope(CRCScope &&) noexcept = delete;
 
-      ~CRCScope() noexcept {
-        --numOpenScopes;
-        if (numOpenScopes == 0) {
-          // Top-level CRC reader scope, clean up base underlying reader
-          underlyingReader = nullptr;
-        }
-      }
+      ~CRCScope() noexcept { readerMap.erase(&wrappingReader); }
 
       CRCScope &operator=(const CRCScope &) = delete;
       CRCScope &operator=(CRCScope &&) noexcept = delete;
 
-      BitReader &peeker() { return *underlyingReader; }
+      BitReader &peeker() { return *readerMap.at(&wrappingReader); }
       BitReader &reader() { return wrappingReader; }
 
       void validateCRC(const MasterElement &master) const {
@@ -390,9 +386,10 @@ namespace bml::ebml {
       uint32_t crc32 = 0xFFFFFFFF;
       BitReader wrappingReader;
 
-      // The original non CRC-calculating BitReader, used for peeking
-      static thread_local BitReader *underlyingReader;
-      static thread_local uint64_t numOpenScopes;
+      // Mapping to the original non CRC-calculating BitReader, used for peeking. Multiple mappings to allow for
+      // concurrent reading in one thread (e.g. via chunked reading)
+      static thread_local std::map<BitReader *, BitReader *> readerMap;
+
       friend BitReader &getUnderlyingReader(BitReader &);
 
       // Adapted from https://rosettacode.org/wiki/CRC-32#C++
@@ -419,42 +416,64 @@ namespace bml::ebml {
       static_assert(CRC_TABLE[7] == 0x9e6495a3L);
     };
 
-    thread_local uint64_t CRCScope::numOpenScopes = 0;
-    thread_local BitReader *CRCScope::underlyingReader = nullptr;
+    thread_local std::map<BitReader *, BitReader *> CRCScope::readerMap;
 
     BitReader &getUnderlyingReader(BitReader &reader) {
-      if (CRCScope::underlyingReader) {
-        return *CRCScope::underlyingReader;
+      if (auto it = CRCScope::readerMap.find(&reader); it != CRCScope::readerMap.end()) {
+        return *it->second;
       }
       return reader;
     }
 
     void readMasterElement(BitReader &reader, ElementId id, MasterElement &master, const ReadOptions &options,
-                           const std::map<ElementId, std::function<void(BitReader &, const ReadOptions &)>> &members,
-                           const std::set<ElementId> &terminatingElementIds) {
+                           std::map<ElementId, std::function<void(BitReader &, const ReadOptions &)>> &&members,
+                           std::set<ElementId> &&terminatingElementIds) {
+      auto readMember =
+          readMasterElementChunked(reader, id, master, options, std::move(members), std::move(terminatingElementIds));
+
+      while (readMember) {
+        readMember();
+      }
+    }
+
+    ChunkedReader
+    readMasterElementChunked(BitReader &reader, ElementId id, MasterElement &master, ReadOptions options,
+                             std::map<ElementId, std::function<void(BitReader &, const ReadOptions &)>> &&members,
+                             std::set<ElementId> &&terminatingElementIds) {
+
+      // The parameters are only available until the first suspension point (co_yield), so cannot reference any
+      // parameter not outliving the coroutine object
+      auto memberReaders = std::move(members);
+      auto terminatingIds = std::move(terminatingElementIds);
+
+      // "Yield" nothing to allow for lazy reading and initializing the chunked reader before actually having data
+      // available
+      co_yield {};
+
       auto masterSize = readElementHeader(reader, id);
       CRCScope crcScope{reader, options.validateCRC32};
 
       const auto hasMoreMembers = [masterSize, startPos{crcScope.peeker().position()}](BitReader &r) {
-        bool pendingBytes = (masterSize == UNKNOWN_SIZE && r.hasMoreBytes()) || (r.position() < startPos + masterSize);
-        return pendingBytes;
+        return (masterSize == UNKNOWN_SIZE && r.hasMoreBytes()) || (r.position() < startPos + masterSize);
       };
 
       // CRC-32 Element (if present) MUST BE the first Element
       if (options.validateCRC32 && hasMoreMembers(crcScope.peeker())) {
         auto crcId = peekElementId(crcScope.peeker());
-        if (auto it = members.find(crcId); crcId == CRC32::ID && it != members.end()) {
+        if (auto it = memberReaders.find(crcId); crcId == CRC32::ID && it != memberReaders.end()) {
           // don't read with CRC scope, since the CRC-32 itself is not part of its calculated value
           // but read with given BitReader, which includes the CRC scopes of any parent Element.
           it->second(reader, options);
+          co_yield it->first;
         }
       }
 
       while (hasMoreMembers(crcScope.peeker())) {
         auto memberId = peekElementId(crcScope.peeker());
-        if (auto it = members.find(memberId); it != members.end()) {
+        if (auto it = memberReaders.find(memberId); it != memberReaders.end()) {
           it->second(crcScope.reader(), options);
-        } else if (masterSize == UNKNOWN_SIZE && terminatingElementIds.contains(memberId)) {
+          co_yield it->first;
+        } else if (masterSize == UNKNOWN_SIZE && terminatingIds.contains(memberId)) {
           // end of element with unknown size
           break;
         } else {
@@ -470,6 +489,8 @@ namespace bml::ebml {
       if (options.validateCRC32) {
         crcScope.validateCRC(master);
       }
+
+      co_return;
     }
 
     void writeMasterElement(BitWriter &writer, ElementId id,
@@ -554,4 +575,27 @@ namespace bml::ebml {
                      docTypeReadVersion, docTypeExtensions, voidElements)
   BML_YAML_DEFINE_PRINT(EBMLHeader, crc32, version, readVersion, maxIDLength, maxSizeLength, docType, docTypeVersion,
                         docTypeReadVersion, docTypeExtensions, voidElements)
+
+  ChunkedReader::~ChunkedReader() {
+    if (handle) {
+      handle.destroy();
+    }
+  }
+
+  ChunkedReader::operator bool() { return handle && !handle.done(); }
+
+  ElementId ChunkedReader::operator()() {
+    if (handle && !handle.done() && !handle.promise().lastId) {
+      handle.resume();
+    }
+    if (handle.promise().error) {
+      std::rethrow_exception(handle.promise().error);
+    }
+    ElementId id{};
+    if (handle.promise().lastId) {
+      id = *handle.promise().lastId;
+      handle.promise().lastId.reset();
+    }
+    return id;
+  }
 } // namespace bml::ebml

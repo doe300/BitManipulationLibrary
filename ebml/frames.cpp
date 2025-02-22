@@ -1,5 +1,7 @@
 #include "mkv.hpp"
 
+#include "internal.hpp"
+
 #include <algorithm>
 #include <limits>
 
