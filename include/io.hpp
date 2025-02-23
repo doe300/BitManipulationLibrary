@@ -90,7 +90,7 @@ namespace bml {
    */
   template <typename Type, std::size_t N>
   void read(BitReader &reader, std::array<Type, N> &value)
-    requires requires(Type obj, BitReader reader) { bml::read(reader, obj); }
+    requires requires(Type obj, BitReader r) { bml::read(r, obj); }
   {
     for (auto &elem : value) {
       read(reader, elem);
@@ -102,7 +102,7 @@ namespace bml {
    */
   template <typename... Types>
   void read(BitReader &reader, std::tuple<Types...> &value)
-    requires(requires(Types obj, BitReader reader) { bml::read(reader, obj); } && ...)
+    requires(requires(Types obj, BitReader r) { bml::read(r, obj); } && ...)
   {
     std::apply([&reader](auto &...args) { (read(reader, args), ...); }, value);
   }
@@ -206,7 +206,7 @@ namespace bml {
    */
   template <typename Type>
   void write(BitWriter &writer, const std::unique_ptr<Type> &value)
-    requires requires(const Type &obj, BitWriter writer) { bml::write(writer, obj); }
+    requires requires(const Type &obj, BitWriter w) { bml::write(w, obj); }
   {
     if (value) {
       bml::write(writer, *value);
@@ -218,7 +218,7 @@ namespace bml {
    */
   template <typename Type>
   void write(BitWriter &writer, const std::vector<Type> &value)
-    requires requires(const Type &obj, BitWriter writer) { bml::write(writer, obj); }
+    requires requires(const Type &obj, BitWriter w) { bml::write(w, obj); }
   {
     for (const auto &element : value) {
       bml::write(writer, element);
@@ -230,7 +230,7 @@ namespace bml {
    */
   template <typename Type, std::size_t N>
   void write(BitWriter &writer, const std::array<Type, N> &value)
-    requires requires(const Type &obj, BitWriter writer) { bml::write(writer, obj); }
+    requires requires(const Type &obj, BitWriter w) { bml::write(w, obj); }
   {
     for (const auto &element : value) {
       bml::write(writer, element);
@@ -242,7 +242,7 @@ namespace bml {
    */
   template <typename... Types>
   void write(BitWriter &writer, const std::tuple<Types...> &value)
-    requires(requires(const Types &obj, BitWriter writer) { bml::write(writer, obj); } && ...)
+    requires(requires(const Types &obj, BitWriter w) { bml::write(w, obj); } && ...)
   {
     std::apply([&writer](auto &...args) { (bml::write(writer, args), ...); }, value);
   }
@@ -252,7 +252,7 @@ namespace bml {
    */
   template <typename... Types>
   void write(BitWriter &writer, const std::variant<Types...> &value)
-    requires(requires(const Types &obj, BitWriter writer) { bml::write(writer, obj); } && ...)
+    requires(requires(const Types &obj, BitWriter w) { bml::write(w, obj); } && ...)
   {
     return std::visit([&writer](const auto &entry) { return bml::write(writer, entry); }, value);
   }
@@ -262,7 +262,7 @@ namespace bml {
    */
   template <typename Type>
   void write(BitWriter &writer, const std::optional<Type> &value)
-    requires requires(const Type &obj, BitWriter writer) { bml::write(writer, obj); }
+    requires requires(const Type &obj, BitWriter w) { bml::write(w, obj); }
   {
     if (value) {
       bml::write(writer, *value);
@@ -468,7 +468,7 @@ namespace bml {
   template <typename Type>
   void copy(BitReader &reader, BitWriter &writer)
     requires(detail::IsTuple<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
-             requires(BitReader &reader, BitWriter &writer) { detail::TupleHelper<Type>::copy(reader, writer); })
+             requires(BitReader &r, BitWriter &w) { detail::TupleHelper<Type>::copy(r, w); })
   {
     detail::TupleHelper<Type>::copy(reader, writer);
   }
@@ -480,9 +480,7 @@ namespace bml {
   template <typename Type>
   void copy(BitReader &reader, BitWriter &writer)
     requires(detail::IsArray<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
-             requires(BitReader &reader, BitWriter &writer) {
-               bml::copy<typename detail::ArrayHelper<Type>::value_type>(reader, writer);
-             })
+             requires(BitReader &r, BitWriter &w) { bml::copy<typename detail::ArrayHelper<Type>::value_type>(r, w); })
   {
     for (std::size_t i = 0; i < std::tuple_size_v<Type>; ++i) {
       copy<typename detail::ArrayHelper<Type>::value_type>(reader, writer);
@@ -547,7 +545,7 @@ namespace bml {
   template <typename Type>
   void skip(BitReader &reader)
     requires(detail::IsTuple<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
-             requires(BitReader &reader) { detail::TupleHelper<Type>::skip(reader); })
+             requires(BitReader &r) { detail::TupleHelper<Type>::skip(r); })
   {
     detail::TupleHelper<Type>::skip(reader);
   }
@@ -559,7 +557,7 @@ namespace bml {
   template <typename Type>
   void skip(BitReader &reader)
     requires(detail::IsArray<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
-             requires(BitReader &reader) { bml::skip<typename detail::ArrayHelper<Type>::value_type>(reader); })
+             requires(BitReader &r) { bml::skip<typename detail::ArrayHelper<Type>::value_type>(r); })
   {
     for (std::size_t i = 0; i < std::tuple_size_v<Type>; ++i) {
       skip<typename detail::ArrayHelper<Type>::value_type>(reader);

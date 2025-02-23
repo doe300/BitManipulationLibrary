@@ -137,11 +137,33 @@ namespace bml {
     std::ostream &output;
   };
 
+  struct ByteWriteBufferImpl final : BitWriter::WriterImpl {
+    explicit ByteWriteBufferImpl(std::vector<std::byte> &buf) : buffer(buf) {}
+
+    bool sinkByte(std::byte byte) override {
+      buffer.push_back(byte);
+      return true;
+    }
+
+    bool sinkBytes(std::span<const std::byte> bytes) override {
+      buffer.insert(buffer.end(), bytes.begin(), bytes.end());
+      return true;
+    }
+
+    bool sinkCopies(std::byte value, ByteCount numBytes) override {
+      buffer.resize(buffer.size() + numBytes.num, value);
+      return true;
+    }
+
+    std::vector<std::byte> &buffer;
+  };
+
   BitWriter::BitWriter() noexcept = default;
   BitWriter::BitWriter(ByteConsumer &&consumer) : impl(std::make_unique<ByteConsumerImpl>(std::move(consumer))) {}
   BitWriter::BitWriter(ByteRange range) : impl(std::make_unique<ByteWriteRangeImpl>(range)) {}
   BitWriter::BitWriter(std::ostream &os) : impl(std::make_unique<ByteOutputStreamImpl>(os)) {}
   BitWriter::BitWriter(BitWriter &&other) noexcept : impl(std::move(other.impl)) { other.impl.reset(); }
+  BitWriter::BitWriter(std::vector<std::byte> &buffer, GrowTag) : impl(std::make_unique<ByteWriteBufferImpl>(buffer)) {}
   BitWriter::~BitWriter() noexcept = default;
 
   BitWriter &BitWriter::operator=(BitWriter &&other) noexcept {

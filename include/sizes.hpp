@@ -118,11 +118,19 @@ namespace bml {
       std::size_t num = 0;
     };
 
-    constexpr std::byte *operator+(std::byte *one, const SizeType<8> &other) noexcept { return one + other.value(); }
-    constexpr const std::byte *operator+(const std::byte *one, const SizeType<8> &other) noexcept {
-      return one + other.value();
+    template <typename Iter>
+    constexpr Iter operator+(Iter one, const SizeType<8> &other) noexcept
+      requires(std::random_access_iterator<Iter> && sizeof(*std::declval<Iter>()) == 1)
+    {
+      return one + static_cast<std::iter_difference_t<Iter>>(other.value());
     }
 
+    template <typename Iter>
+    constexpr Iter operator-(Iter one, const SizeType<8> &other) noexcept
+      requires(std::random_access_iterator<Iter> && sizeof(*std::declval<Iter>()) == 1)
+    {
+      return one - static_cast<std::iter_difference_t<Iter>>(other.value());
+    }
   } // namespace detail
 
   using BitCount = detail::SizeType<1>;

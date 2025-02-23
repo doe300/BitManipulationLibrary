@@ -1,7 +1,6 @@
 #pragma once
 
 #include "bml.hpp"
-#include "yaml.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -30,8 +29,8 @@ namespace bml::ebml {
 
   struct ReadOptions {
     /**
-     * If set to true, will validate CRC-32 Elements in Master Elements (if present) and throw an error if the
-     * successive Elements inside the Master Element do not match the CRC-32.
+     * If set to true, will validate CRC-32 Elements in Master Elements (if present) and throw an ChecksumMismatchError
+     * if the successive Elements inside the Master Element do not match the CRC-32.
      */
     bool validateCRC32 = false;
 

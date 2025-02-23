@@ -7,6 +7,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <span>
 
 namespace bml {
@@ -48,7 +49,7 @@ namespace bml {
 
     // Disallow copying, since the different byte sources might behave differently when being copied
     BitReader(const BitReader &) = delete;
-    BitReader(BitReader && other) noexcept;
+    BitReader(BitReader &&other) noexcept;
     ~BitReader() noexcept;
 
     BitReader &operator=(const BitReader &) = delete;
@@ -85,8 +86,10 @@ namespace bml {
 
     /**
      * Peeks the given amount of bits without increasing the current read position.
+     *
+     * Returns the peeked value if available or an empty optional value if not enough bits can be peeked.
      */
-    std::uintmax_t peek(BitCount numBits);
+    std::optional<std::uintmax_t> peek(BitCount numBits);
 
     /**
      * Reads the given amount of bits, increasing the current read position.

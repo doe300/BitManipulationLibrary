@@ -1,6 +1,7 @@
 #include "ebml.hpp"
 
 #include "debug.hpp"
+#include "errors.hpp"
 #include "internal.hpp"
 
 #include <array>
@@ -28,9 +29,17 @@ namespace bml::ebml {
 
     static ElementId peekElementId(BitReader &reader) {
       static_assert(sizeof(uintmax_t) <= 8, "The current implementation only works for up to 8 bytes read");
-      auto prefix = static_cast<uint8_t>(reader.peek(1_bytes));
+      auto val = reader.peek(1_bytes);
+      if (!val) {
+        throw EndOfStreamError("Cannot read more bytes, end of input reached");
+      }
+      auto prefix = static_cast<uint8_t>(*val);
       auto numBytes = static_cast<uint32_t>(std::countl_zero(prefix) + 1 /* 1 bit */);
-      return static_cast<ElementId>(reader.peek(ByteCount{numBytes}));
+      val = reader.peek(ByteCount{numBytes});
+      if (!val) {
+        throw EndOfStreamError("Cannot read more bytes, end of input reached");
+      }
+      return static_cast<ElementId>(*val);
     }
 
     static void writeVariableSizeInteger(BitWriter &writer, uintmax_t value) {
@@ -254,7 +263,11 @@ namespace bml::ebml {
      */
     std::pair<uintmax_t, BitCount> readVariableSizeInteger(BitReader &reader, bool includePrefix) {
       static_assert(sizeof(uintmax_t) <= 8, "The current implementation only works for up to 8 bytes read");
-      auto prefix = static_cast<uint8_t>(reader.peek(1_bytes));
+      auto tmp = reader.peek(1_bytes);
+      if (!tmp) {
+        throw EndOfStreamError("Cannot read more bytes, end of input reached");
+      }
+      auto prefix = static_cast<uint8_t>(*tmp);
       auto numBytes = static_cast<uint32_t>(std::countl_zero(prefix) + 1 /* 1 bit */);
       auto val = reader.read(ByteCount{numBytes});
       BitCount numBits = ByteCount{numBytes};
@@ -372,7 +385,7 @@ namespace bml::ebml {
           std::stringstream ss;
           CRC32 dummy{finalCRC32};
           ss << "CRC-32 Element with value '" << *master.crc32 << "' does not match calculated CRC-32: " << dummy;
-          throw std::runtime_error{ss.str()};
+          throw ChecksumMismatchError{ss.str()};
         }
       }
 

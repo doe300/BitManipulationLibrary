@@ -20,8 +20,12 @@ namespace bml {
    * NOTE: Any write function will throw an error if the underlying byte sink has not enough space left.
    */
   class BitWriter {
+    struct GrowTag {};
+
   public:
     class WriterImpl;
+
+    static constexpr GrowTag GROW{};
 
     /**
      * A byte sink consuming a single byte at a time.
@@ -44,6 +48,16 @@ namespace bml {
     explicit BitWriter(std::byte *begin, std::byte *end) : BitWriter(ByteRange{begin, end}) {}
     explicit BitWriter(std::span<uint8_t> range) : BitWriter(std::as_writable_bytes(range)) {}
     explicit BitWriter(std::ostream &os);
+    /**
+     * Creates a bit writer over a mutable byte buffer.
+     *
+     * The bit writer will grow the given buffer when writing new data.
+     *
+     * NOTE: The given buffer is referenced internally and needs to outlive the bit writer!
+     */
+    explicit BitWriter(std::vector<std::byte> &buffer, GrowTag);
+    /** Delete to force disambiguation between growing and non-growing buffer constructors */
+    explicit BitWriter(std::vector<std::byte> &buffer) = delete;
 
     // Disallow copying, since the different byte sinks might behave differently when being copied
     BitWriter(const BitWriter &) = delete;

@@ -224,7 +224,7 @@ public:
       TEST_THROWS(mapBytes<uint16_t>()(reader), std::invalid_argument);
 
       std::vector<std::byte> outData(data.size());
-      BitWriter writer{outData};
+      BitWriter writer{std::span{outData}};
       writer.write(true);
       TEST_THROWS(mapBytes<uint16_t>()(writer, 16), std::invalid_argument);
     }
@@ -236,7 +236,7 @@ public:
       TEST_THROWS(assertByteAligned()(reader), std::invalid_argument);
 
       std::vector<std::byte> outData(data.size());
-      BitWriter writer{outData};
+      BitWriter writer{std::span{outData}};
       writer.write(true);
       TEST_THROWS(assertByteAligned()(writer), std::invalid_argument);
 
@@ -260,7 +260,7 @@ private:
     // Write
     {
       std::vector<std::byte> outData(data.size());
-      BitWriter writer{outData};
+      BitWriter writer{std::span{outData}};
       TEST_THROWS_NOTHING(map(writer, expectedValue));
       TEST_ASSERT_EQUALS(numBits, writer.position());
       writer.flush();
@@ -284,7 +284,7 @@ private:
     // Write
     {
       std::vector<std::byte> outData(data.size());
-      BitWriter writer{outData};
+      BitWriter writer{std::span{outData}};
       TEST_THROWS_NOTHING(map(writer, expectedObject));
       TEST_ASSERT_EQUALS(numBits, writer.position());
       writer.flush();

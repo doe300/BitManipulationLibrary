@@ -15,4 +15,12 @@ namespace bml {
     EndOfStreamError(const std::string &msg) : std::length_error(msg) {}
     EndOfStreamError(const char *msg) : std::length_error(msg) {}
   };
+
+  /**
+   * Exception type indicating a calculated checksum or other error detection code does not match its expected value.
+   */
+  struct ChecksumMismatchError final : public std::runtime_error {
+    ChecksumMismatchError(const std::string &msg) : std::runtime_error(msg) {}
+    ChecksumMismatchError(const char *msg) : std::runtime_error(msg) {}
+  };
 } // namespace bml

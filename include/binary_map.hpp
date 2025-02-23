@@ -919,7 +919,7 @@ namespace bml {
       static_assert(NumBits <= BitCount{detail::TypeBits<Type>::value});
     }
     return detail::MapMemberPropertyBits<detail::RunTimeValueHolder<G>, detail::RunTimeValueHolder<S>,
-                                         detail::CompileTimeValueHolder<NumBits>>{memberGetter, memberSetter, {}};
+                                         detail::CompileTimeValueHolder<NumBits>>{{memberGetter}, {memberSetter}, {}};
   }
 
   /**

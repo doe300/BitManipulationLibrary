@@ -1,7 +1,6 @@
 #include "bml.hpp"
 #include "common.hpp"
 #include "test_helper.hpp"
-#include "yaml.hpp"
 
 #include "cpptest-main.h"
 

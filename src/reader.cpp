@@ -34,8 +34,11 @@ namespace bml {
       return bit;
     }
 
-    std::uintmax_t peek(BitCount numBits) {
-      makeAvailable(numBits);
+    std::optional<std::uintmax_t> peek(BitCount numBits) {
+      makeAvailable(numBits, false);
+      if (cacheSize < numBits) {
+        return {};
+      }
       Cache tmp{cache, cacheSize};
       return readFromCache(tmp, numBits);
     }
@@ -281,7 +284,7 @@ namespace bml {
 
   bool BitReader::read() { return assertImpl(impl).read(); }
 
-  std::uintmax_t BitReader::peek(BitCount numBits) { return assertImpl(impl).peek(numBits); }
+  std::optional<std::uintmax_t> BitReader::peek(BitCount numBits) { return assertImpl(impl).peek(numBits); }
   std::uintmax_t BitReader::read(BitCount numBits) { return assertImpl(impl).read(numBits); }
 
   std::uintmax_t BitReader::readBytes(ByteCount numBytes) {
@@ -306,44 +309,46 @@ namespace bml {
 
   char32_t BitReader::readUtf8CodePoint() {
     auto b = peek(1_bytes);
-    if ((b & 0x80U) == 0x00U) {
+    if (b && (*b & 0x80U) == 0x00U) {
       // simple 7-bit ASCII
       return read<uint32_t>(1_bytes);
-    } else if ((b & 0xE0U) == 0xC0U) {
+    } else if (b && (*b & 0xE0U) == 0xC0U) {
       const uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x1FU) << 6U;
       return codePoint | (read<uint32_t>(1_bytes) & 0x3FU);
-    } else if ((b & 0xF0U) == 0xE0U) {
+    } else if (b && (*b & 0xF0U) == 0xE0U) {
       uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x0FU) << 12U;
       codePoint |= (read<uint32_t>(1_bytes) & 0x3FU) << 6U;
       return codePoint | (read<uint32_t>(1_bytes) & 0x3FU);
-    } else if ((b & 0xF8U) == 0xF0U) {
+    } else if (b && (*b & 0xF8U) == 0xF0U) {
       uint32_t codePoint = (read<uint32_t>(1_bytes) & 0x07U) << 18U;
       codePoint |= (read<uint32_t>(1_bytes) & 0x3FU) << 12U;
       codePoint |= (read<uint32_t>(1_bytes) & 0x3FU) << 6U;
       return codePoint | (read<uint32_t>(1_bytes) & 0x3FU);
-    } else if ((b & 0xC0U) == 0x80U) {
+    } else if (b && (*b & 0xC0U) == 0x80U) {
       // start within the previous UTF-8 character, cannot decode, so skip remainder
-      while ((peek(1_bytes) & 0xC0U) == 0x80U) {
+      while ((b = peek(1_bytes)) && (*b & 0xC0U) == 0x80U) {
         readByte();
       }
+      return 0;
     }
-    return 0;
+    throw EndOfStreamError("Cannot read more bytes, end of input reached");
   }
 
   char32_t BitReader::readUtf16CodePoint() {
     auto b = peek(2_bytes);
-    if (b < 0xD800U || b >= 0xE000U) {
+    if (b && (*b < 0xD800U || *b >= 0xE000U)) {
       return read<uint32_t>(2_bytes);
-    } else if ((b & 0xDC00U) == 0xD800U) {
+    } else if (b && (*b & 0xDC00U) == 0xD800U) {
       const uint32_t codePoint = (read<uint32_t>(2_bytes) & 0x3FFU) << 10U;
       return 0x10000U | codePoint | (read<uint32_t>(2_bytes) & 0x3FFU);
-    } else if ((b & 0xDC00U) == 0xDC00U) {
+    } else if (b && (*b & 0xDC00U) == 0xDC00U) {
       // start within the previous UTF-16 character, cannot decode, so skip remainder
-      while ((peek(2_bytes) & 0xDC00U) == 0xDC00U) {
+      while ((b = peek(2_bytes)) && (*b & 0xDC00U) == 0xDC00U) {
         read(2_bytes);
       }
+      return 0;
     }
-    return 0;
+    throw EndOfStreamError("Cannot read more bytes, end of input reached");
   }
 
   uint32_t BitReader::readFibonacci() {

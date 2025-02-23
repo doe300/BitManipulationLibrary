@@ -302,7 +302,7 @@ public:
     options.validateCRC32 = true;
 
     DocTypeExtension ext{};
-    TEST_THROWS(ext.read(reader, options), std::runtime_error);
+    TEST_THROWS(ext.read(reader, options), ChecksumMismatchError);
   }
 
   void testUnknownElement() {

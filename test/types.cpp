@@ -37,7 +37,7 @@ protected:
     requires(Writeable<T>)
   {
     std::vector<std::byte> data(expectedData.size());
-    BitWriter writer{data};
+    BitWriter writer{std::span{data}};
     TEST_THROWS_NOTHING(bml::write(writer, value));
     TEST_ASSERT_EQUALS(numBits, writer.position());
     writer.flush();
@@ -45,6 +45,13 @@ protected:
 
     data = std::vector<std::byte>(expectedData.size());
     writer = createConsumerWriter(data);
+    TEST_THROWS_NOTHING(bml::write(writer, value));
+    TEST_ASSERT_EQUALS(numBits, writer.position());
+    writer.flush();
+    TEST_ASSERT_EQUALS(expectedData, data);
+
+    data.clear();
+    writer = BitWriter{data, BitWriter::GROW};
     TEST_THROWS_NOTHING(bml::write(writer, value));
     TEST_ASSERT_EQUALS(numBits, writer.position());
     writer.flush();
@@ -72,7 +79,7 @@ protected:
       // Copy directly on byte buffer
       BitReader reader{expectedData};
       std::vector<std::byte> data(expectedData.size());
-      BitWriter writer{data};
+      BitWriter writer{std::span{data}};
       TEST_THROWS_NOTHING(bml::copy<T>(reader, writer));
       TEST_ASSERT_EQUALS(numBits, reader.position());
       TEST_ASSERT_EQUALS(numBits, writer.position());
@@ -218,7 +225,7 @@ public:
       TEST_ASSERT_EQUALS(0_bits, reader->skipToAligment(1_bytes));
       TEST_THROWS_NOTHING(reader->assertAlignment(1_bytes));
       TEST_THROWS(reader->read(), EndOfStreamError);
-      TEST_THROWS(reader->peek(7_bits), EndOfStreamError);
+      TEST_ASSERT_FALSE(reader->peek(7_bits));
       TEST_THROWS(reader->read(3_bits), EndOfStreamError);
       TEST_THROWS(reader->readBytes(2_bytes), EndOfStreamError);
       TEST_THROWS(reader->readByte(), EndOfStreamError);
@@ -237,7 +244,7 @@ public:
 
   void testWriterEos() {
     std::vector<std::byte> buffer{};
-    BitWriter writer1{buffer};
+    BitWriter writer1{std::span{buffer}};
     BitWriter writer2{[](std::byte) { return false; }};
 
     for (auto *writer : {&writer1, &writer2}) {
