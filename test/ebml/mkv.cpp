@@ -72,8 +72,8 @@ public:
   void testInfo() {
     Info elem{};
     elem.crc32 = 0xF57861CC;
-    elem.duration = 475090.0F;
-    elem.timestampScale = 100000U;
+    elem.duration = SegmentTimestamp<float>{475090.0F};
+    elem.timestampScale = SegmentTimescale{100000U};
     elem.muxingApp = u8"libebml2 v0.21.0 + libmatroska2 v0.22.1";
     elem.writingApp = u8"mkclean 0.8.3 ru from libebml2 v0.10.0 + libmatroska2 v0.10.1 + mkclean 0.5.5 ru from libebml "
                       u8"v1.0.0 + libmatroska v1.0.0 + mkvmerge v4.1.1 ('Bouncin' Back') built on Jul  3 2010 22:54:08";
@@ -165,7 +165,7 @@ contentCompression:
     elem.trackUID = 0x6F1A06B3;
     elem.trackType = 1;
     elem.flagLacing = false;
-    elem.defaultDuration = 0x027BC869;
+    elem.defaultDuration = MatroskaTimestamp{0x027BC869};
     elem.language = "und";
     elem.codecID = "V_MPEG4/ISO/AVC";
     elem.codecPrivate = toBytes({0x01, 0x4D, 0x40, 0x1F, 0xFF, 0xE1, 0x00, 0x14, 0x27, 0x4D, 0x40, 0x1F,
@@ -230,7 +230,7 @@ video:
       entry.trackUID = 0x6F1A06B3;
       entry.trackType = 1;
       entry.flagLacing = false;
-      entry.defaultDuration = 0x027BC869;
+      entry.defaultDuration = MatroskaTimestamp{0x027BC869};
       entry.language = "und";
       entry.codecID = "V_MPEG4/ISO/AVC";
       elem.trackEntries.push_back(std::move(entry));
@@ -381,8 +381,8 @@ cuePoints:
     elem.block.header.timestampOffset = 40;
     elem.block.header.keyframe = true;
     elem.block.header.lacing = BlockHeader::Lacing::XIPH;
-    elem.blockDuration = 0x0341;
-    elem.referenceBlocks.emplace_back(0x29);
+    elem.blockDuration = TrackTimestamp<>{0x0341};
+    elem.referenceBlocks.emplace_back(TrackTimestamp<intmax_t>{0x29});
 
     testElement<BlockGroup, true /* content */>(elem, {0xA0, 0x92, 0xA1, 0x89, 0x81, 0x00, 0x28, 0x82, 0x00, 0xDE,
                                                        0xAD, 0xBE, 0xEF, 0x9B, 0x82, 0x03, 0x41, 0xFB, 0x81, 0x29},
@@ -402,7 +402,7 @@ referenceBlocks: [41, ])");
 
   void testCluster() {
     Cluster elem{};
-    elem.timestamp = 0x034634;
+    elem.timestamp = SegmentTimestamp<>{0x034634};
     elem.position = 0x5B7E04;
     elem.prevSize = 0x03AEEB;
 
@@ -421,8 +421,8 @@ referenceBlocks: [41, ])");
       group.block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xEF});
       group.block.header.trackNumber = 1;
       group.block.header.timestampOffset = 0;
-      group.blockDuration = 0x0341;
-      group.referenceBlocks.emplace_back(0x29);
+      group.blockDuration = TrackTimestamp<>{0x0341};
+      group.referenceBlocks.emplace_back(TrackTimestamp<intmax_t>{0x29});
       elem.blockGroups.push_back(std::move(group));
     }
 
@@ -471,7 +471,7 @@ blockGroups:
       elem.seekHeads.push_back(std::move(head));
     }
 
-    elem.info.duration = 49064.0F;
+    elem.info.duration = SegmentTimestamp<float>{49064.0F};
     elem.info.muxingApp = u8"libebml2 v0.11.0 + libmatroska2 v0.10.1";
 
     {
@@ -507,7 +507,7 @@ blockGroups:
       cues.crc32 = 0xF826E933;
 
       CuePoint point{};
-      point.cueTime = 0xBBA9U;
+      point.cueTime = MatroskaTimestamp{0xBBA9U};
       CueTrackPositions pos{};
       pos.cueTrack = 1;
       pos.cueClusterPosition = 0x013C56B8;
@@ -519,7 +519,7 @@ blockGroups:
 
     {
       Cluster cluster{};
-      cluster.timestamp = 0x3E80;
+      cluster.timestamp = SegmentTimestamp<>{0x3E80};
       cluster.position = 0x501646;
 
       SimpleBlock block{};
@@ -726,7 +726,7 @@ tags:
     {
       Cluster cluster{};
       cluster.crc32 = 0x5EC83845;
-      cluster.timestamp = 0x3E80;
+      cluster.timestamp = SegmentTimestamp<>{0x3E80};
       cluster.position = 0x501646;
 
       SimpleBlock block{};
@@ -804,7 +804,7 @@ tags:
     TEST_ASSERT_EQUALS(Cues::ID, readChunked());
     TEST_ASSERT(mkv.segment.cues);
     TEST_ASSERT_EQUALS(1U, mkv.segment.cues.value().cuePoints.size());
-    TEST_ASSERT_EQUALS(0xBBA9U, mkv.segment.cues.value().cuePoints.front().cueTime);
+    TEST_ASSERT_EQUALS(0xBBA9U, mkv.segment.cues.value().cuePoints.front().cueTime.get().value);
     TEST_ASSERT_EQUALS(2U, buffer.size());
 
     buffer.insert(buffer.end(), {/* Cluster (cont.) */ 0xB6, 0x75, 0xFF, /* CRC32 */ 0xBF, 0x84, 0x45, 0x38, 0xC8, 0x5E,
@@ -817,7 +817,7 @@ tags:
     TEST_ASSERT(readChunked);
     TEST_ASSERT_EQUALS(Cluster::ID, readChunked());
     TEST_ASSERT_EQUALS(1U, mkv.segment.clusters.size());
-    TEST_ASSERT_EQUALS(0x3E80, mkv.segment.clusters.front().timestamp);
+    TEST_ASSERT_EQUALS(0x3E80U, mkv.segment.clusters.front().timestamp.get().value);
     TEST_ASSERT_EQUALS(0x501646, mkv.segment.clusters.front().position.value());
     TEST_ASSERT(buffer.empty());
 
@@ -832,7 +832,7 @@ tags:
     TEST_ASSERT(readChunked);
     TEST_ASSERT_EQUALS(Cluster::ID, readChunked());
     TEST_ASSERT_EQUALS(2U, mkv.segment.clusters.size());
-    TEST_ASSERT_EQUALS(214580U, mkv.segment.clusters.back().timestamp);
+    TEST_ASSERT_EQUALS(214580U, mkv.segment.clusters.back().timestamp.get().value);
     TEST_ASSERT_EQUALS(5996036U, mkv.segment.clusters.back().position.value());
     TEST_ASSERT_EQUALS(241387U, mkv.segment.clusters.back().prevSize.value());
 
@@ -973,8 +973,18 @@ frames:
     Matroska mkv{};
 
     {
+      TrackEntry track{};
+      track.trackNumber = 2U;
+      track.trackTimestampScale = TrackTimescale{2.0F};
+
+      Tracks tracks{};
+      tracks.trackEntries.push_back(std::move(track));
+      mkv.segment.tracks = std::move(tracks);
+    }
+
+    {
       Cluster cluster{};
-      cluster.timestamp = 1000;
+      cluster.timestamp = SegmentTimestamp<>{1000};
       {
         SimpleBlock block{};
         block.header.trackNumber = 2;
@@ -1008,7 +1018,7 @@ frames:
 
     {
       Cluster cluster{};
-      cluster.timestamp = 2000;
+      cluster.timestamp = SegmentTimestamp<>{2000};
       {
         BlockGroup group{};
         group.block.header.trackNumber = 1;
@@ -1046,13 +1056,59 @@ frames:
       mkv.segment.clusters.push_back(std::move(cluster));
     }
 
-    const std::vector<ByteRange> EXPECTED_RANGES = {{10_bytes, 4_bytes}, {20_bytes, 4_bytes}, {24_bytes, 2_bytes},
-                                                    {26_bytes, 6_bytes}, {40_bytes, 4_bytes}, {44_bytes, 2_bytes},
-                                                    {46_bytes, 6_bytes}, {50_bytes, 4_bytes}, {54_bytes, 4_bytes}};
-    auto tmp = mkv.viewFrames(2U) | std::views::transform([](const Frame &frame) { return frame.dataRange; }) |
-               std::views::common;
-    std::vector<ByteRange> dataRanges(tmp.begin(), tmp.end());
-    TEST_ASSERT_EQUALS(EXPECTED_RANGES, dataRanges);
+    {
+      // There is no TrackEntry for track 3
+      auto frames = mkv.viewFrames(3U);
+      TEST_ASSERT(frames.begin() == frames.end());
+    }
+
+    {
+      const std::vector<ByteRange> EXPECTED_RANGES = {{10_bytes, 4_bytes}, {20_bytes, 4_bytes}, {24_bytes, 2_bytes},
+                                                      {26_bytes, 6_bytes}, {40_bytes, 4_bytes}, {44_bytes, 2_bytes},
+                                                      {46_bytes, 6_bytes}, {50_bytes, 4_bytes}, {54_bytes, 4_bytes}};
+      const std::vector<std::optional<uintmax_t>> EXPECTED_TIMESTAMPS{
+          1000 / 2 - 42, 1000 / 2 - 7, {}, {}, 2000 / 2 - 50, {}, {}, 2000 / 2 + 117, {}};
+
+      std::size_t i = 0;
+      for (auto frame : mkv.viewFrames(2U)) {
+        TEST_ASSERT_EQUALS(EXPECTED_RANGES.at(i), frame.dataRange);
+        if (frame.timestamp) {
+          TEST_ASSERT_EQUALS(EXPECTED_TIMESTAMPS.at(i), frame.timestamp->value);
+        } else {
+          TEST_ASSERT_FALSE(EXPECTED_TIMESTAMPS.at(i));
+        }
+        ++i;
+      }
+      TEST_ASSERT_EQUALS(EXPECTED_RANGES.size(), i);
+      TEST_ASSERT_EQUALS(EXPECTED_TIMESTAMPS.size(), i);
+    }
+
+    {
+      // Start at timestamp offset
+      auto tmp = mkv.viewFrames(2U, TrackTimestamp<>{50}) | std::views::common;
+      std::vector<Frame> frames(tmp.begin(), tmp.end());
+      TEST_ASSERT_EQUALS(9U, frames.size());
+      TEST_ASSERT_EQUALS(1000U / 2U - 42U, frames.front().timestamp.value().value);
+
+      tmp = mkv.viewFrames(2U, TrackTimestamp<>{490}) | std::views::common;
+      frames = std::vector<Frame>(tmp.begin(), tmp.end());
+      TEST_ASSERT_EQUALS(8U, frames.size());
+      TEST_ASSERT_EQUALS(1000U / 2U - 7U, frames.front().timestamp.value().value);
+
+      tmp = mkv.viewFrames(2U, TrackTimestamp<>{500}) | std::views::common;
+      frames = std::vector<Frame>(tmp.begin(), tmp.end());
+      TEST_ASSERT_EQUALS(5U, frames.size());
+      TEST_ASSERT_EQUALS(2000U / 2U - 50U, frames.front().timestamp.value().value);
+
+      tmp = mkv.viewFrames(2U, TrackTimestamp<>{1000}) | std::views::common;
+      frames = std::vector<Frame>(tmp.begin(), tmp.end());
+      TEST_ASSERT_EQUALS(2U, frames.size());
+      TEST_ASSERT_EQUALS(2000U / 2U + 117U, frames.front().timestamp.value().value);
+
+      tmp = mkv.viewFrames(2U, TrackTimestamp<>{1500}) | std::views::common;
+      frames = std::vector<Frame>(tmp.begin(), tmp.end());
+      TEST_ASSERT(frames.empty());
+    }
   }
 
 private:
@@ -1070,7 +1126,31 @@ private:
   }
 };
 
+class TestMkvOther : public TestElementsBase {
+public:
+  TestMkvOther() : TestElementsBase("MkvOther") { TEST_ADD(TestMkvOther::testTimestamps); }
+
+  void testTimestamps() {
+    TEST_ASSERT_EQUALS(std::chrono::nanoseconds{17}, MatroskaTimestamp{17});
+
+    TEST_ASSERT_EQUALS(MatroskaTimestamp{42}, SegmentTimestamp<>{2} * SegmentTimescale{21});
+    TEST_ASSERT_EQUALS(MatroskaTimestamp{50}, SegmentTimestamp<float>{2.4F} * SegmentTimescale{21});
+    // round to nearest
+    TEST_ASSERT_EQUALS(MatroskaTimestamp{55}, SegmentTimestamp<float>{2.6F} * SegmentTimescale{21});
+    TEST_ASSERT_EQUALS(SegmentTimestamp<>{2}, MatroskaTimestamp{42} / SegmentTimescale{21});
+
+    TEST_ASSERT_EQUALS(SegmentTimestamp<>{8}, TrackTimestamp<>{2} * TrackTimescale{4});
+    TEST_ASSERT_EQUALS(SegmentTimestamp<>{8}, TrackTimestamp<intmax_t>{2} * TrackTimescale{4});
+    TEST_ASSERT_EQUALS(TrackTimestamp<>{2}, SegmentTimestamp<>{8} / TrackTimescale{4});
+
+    TEST_ASSERT_EQUALS(SegmentTimestamp<>{9}, TrackTimestamp<>{2} * TrackTimescale{4.3F});
+    TEST_ASSERT_EQUALS(SegmentTimestamp<>{9}, TrackTimestamp<intmax_t>{2} * TrackTimescale{4.3F});
+    TEST_ASSERT_EQUALS(TrackTimestamp<>{2}, SegmentTimestamp<>{8} / TrackTimescale{4.3F});
+  }
+};
+
 void registerMkvTestSuites() {
   Test::registerSuite(Test::newInstance<TestMkvElements>, "mkv");
   Test::registerSuite(Test::newInstance<TestMkvFrames>, "frames");
+  Test::registerSuite(Test::newInstance<TestMkvOther>, "other");
 }

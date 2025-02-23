@@ -230,8 +230,11 @@ namespace bml::ebml::mkv {
     return &*it;
   }
 
-  FrameView Matroska::viewFrames(uint32_t trackNumber) const {
-    return FrameView{std::span{segment.clusters}, trackNumber};
+  FrameView Matroska::viewFrames(uint32_t trackNumber, const TrackTimestamp<> &start) const {
+    if (const auto *track = getTrackEntry(trackNumber)) {
+      return FrameView{std::span{segment.clusters}, trackNumber, track->trackTimestampScale, start};
+    }
+    return FrameView{{}, 0, {}, {}};
   }
 
   BML_EBML_DEFINE_IO(SeekHead, crc32, seeks, voidElements)
@@ -416,3 +419,112 @@ namespace bml::ebml::mkv {
                         voidElements)
 
 } // namespace bml::ebml::mkv
+
+namespace bml::ebml::detail {
+  template <>
+  void BaseSimpleElement<mkv::MatroskaTimestamp>::readValue(BitReader &reader, ElementId id,
+                                                            const mkv::MatroskaTimestamp &defaultValue) {
+    BaseSimpleElement<uintmax_t> tmp{};
+    tmp.readValue(reader, id, defaultValue.value);
+    value.value = tmp.value;
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::MatroskaTimestamp>::writeValue(BitWriter &writer, ElementId id,
+                                                             const mkv::MatroskaTimestamp &defaultValue) const {
+    BaseSimpleElement<uintmax_t> tmp{value.value};
+    tmp.writeValue(writer, id, defaultValue.value);
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::SegmentTimestamp<>>::readValue(BitReader &reader, ElementId id,
+                                                             const mkv::SegmentTimestamp<> &defaultValue) {
+    BaseSimpleElement<uintmax_t> tmp{};
+    tmp.readValue(reader, id, defaultValue.value);
+    value.value = tmp.value;
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::SegmentTimestamp<>>::writeValue(BitWriter &writer, ElementId id,
+                                                              const mkv::SegmentTimestamp<> &defaultValue) const {
+    BaseSimpleElement<uintmax_t> tmp{value.value};
+    tmp.writeValue(writer, id, defaultValue.value);
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::SegmentTimestamp<float>>::readValue(BitReader &reader, ElementId id,
+                                                                  const mkv::SegmentTimestamp<float> &defaultValue) {
+    BaseSimpleElement<float> tmp{};
+    tmp.readValue(reader, id, defaultValue.value);
+    value.value = tmp.value;
+  }
+
+  template <>
+  void
+  BaseSimpleElement<mkv::SegmentTimestamp<float>>::writeValue(BitWriter &writer, ElementId id,
+                                                              const mkv::SegmentTimestamp<float> &defaultValue) const {
+    BaseSimpleElement<float> tmp{value.value};
+    tmp.writeValue(writer, id, defaultValue.value);
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::TrackTimestamp<>>::readValue(BitReader &reader, ElementId id,
+                                                           const mkv::TrackTimestamp<> &defaultValue) {
+    BaseSimpleElement<uintmax_t> tmp{};
+    tmp.readValue(reader, id, defaultValue.value);
+    value.value = tmp.value;
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::TrackTimestamp<>>::writeValue(BitWriter &writer, ElementId id,
+                                                            const mkv::TrackTimestamp<> &defaultValue) const {
+    BaseSimpleElement<uintmax_t> tmp{value.value};
+    tmp.writeValue(writer, id, defaultValue.value);
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::TrackTimestamp<intmax_t>>::readValue(BitReader &reader, ElementId id,
+                                                                   const mkv::TrackTimestamp<intmax_t> &defaultValue) {
+    BaseSimpleElement<intmax_t> tmp{};
+    tmp.readValue(reader, id, defaultValue.value);
+    value.value = tmp.value;
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::TrackTimestamp<intmax_t>>::writeValue(
+      BitWriter &writer, ElementId id, const mkv::TrackTimestamp<intmax_t> &defaultValue) const {
+    BaseSimpleElement<intmax_t> tmp{value.value};
+    tmp.writeValue(writer, id, defaultValue.value);
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::SegmentTimescale>::readValue(BitReader &reader, ElementId id,
+                                                           const mkv::SegmentTimescale &defaultValue) {
+    BaseSimpleElement<uintmax_t> tmp{};
+    tmp.readValue(reader, id, defaultValue.value);
+    value.value = tmp.value;
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::SegmentTimescale>::writeValue(BitWriter &writer, ElementId id,
+                                                            const mkv::SegmentTimescale &defaultValue) const {
+    BaseSimpleElement<uintmax_t> tmp{value.value};
+    tmp.writeValue(writer, id, defaultValue.value);
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::TrackTimescale>::readValue(BitReader &reader, ElementId id,
+                                                         const mkv::TrackTimescale &defaultValue) {
+    BaseSimpleElement<float> tmp{};
+    tmp.readValue(reader, id, defaultValue.value);
+    value.value = tmp.value;
+  }
+
+  template <>
+  void BaseSimpleElement<mkv::TrackTimescale>::writeValue(BitWriter &writer, ElementId id,
+                                                          const mkv::TrackTimescale &defaultValue) const {
+    BaseSimpleElement<float> tmp{value.value};
+    tmp.writeValue(writer, id, defaultValue.value);
+  }
+
+} // namespace bml::ebml::detail

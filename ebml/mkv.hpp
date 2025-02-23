@@ -1,8 +1,9 @@
 #pragma once
 
 #include "ebml.hpp"
+#include "mkv_common.hpp"
 
-#include <array>
+#include <optional>
 #include <ranges>
 
 /**
@@ -11,117 +12,6 @@
  * See: https://www.matroska.org/technical/elements.html
  */
 namespace bml::ebml::mkv {
-
-  /**
-   * Block header fields.
-   */
-  struct BlockHeader {
-    static constexpr ByteCount minNumBits() { return VariableSizeInteger::minNumBits() + 3_bytes; };
-    static constexpr ByteCount maxNumBits() { return VariableSizeInteger::maxNumBits() + 3_bytes; }
-
-    enum class Lacing : uint8_t {
-      NONE = 0b00,
-      XIPH = 0b01,
-      EBML = 0b11,
-      FIXED_SIZE = 0b10,
-    };
-
-    VariableSizeInteger trackNumber;
-    SignedBytes<int16_t> timestampOffset;
-    Bit keyframe;
-    FixedBits<3, 0b0> reserved;
-    Bit invisible;
-    Bits<2, Lacing> lacing;
-    Bit discardable;
-
-    constexpr BlockHeader() noexcept = default;
-    constexpr auto operator<=>(const BlockHeader &) const noexcept = default;
-    constexpr ByteCount numBits() const noexcept { return trackNumber.numBits() + 3_bytes; }
-
-    void read(bml::BitReader &reader, const ReadOptions &options = {});
-    void write(BitWriter &writer) const;
-
-    BML_DEFINE_PRINT(BlockHeader, trackNumber, timestampOffset, keyframe, reserved, invisible, lacing, discardable)
-    std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
-  };
-
-  namespace detail {
-    /**
-     * Base type for all Binary Elements storing an UUID.
-     */
-    struct BaseUUIDElement : public bml::ebml::detail::BaseSimpleElement<std::array<std::byte, 16>> {
-      static constexpr auto NUM_BYTES = 16_bytes;
-
-      using BaseSimpleElement::BaseSimpleElement;
-
-      friend std::ostream &operator<<(std::ostream &os, const BaseUUIDElement &element);
-      std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
-
-    protected:
-      void readValue(BitReader &reader, ElementId id, const ReadOptions &options);
-      void writeValue(BitWriter &writer, ElementId id) const;
-    };
-
-    /**
-     * Base type for all Block Element types to provide common read/write functionality.
-     */
-    struct BaseBlockElement : MasterElement {
-      /**
-       * The block header data,
-       */
-      BlockHeader header;
-
-      /**
-       * Ranges of the contained frame data relative to the start of the read byte source.
-       *
-       * NOTE: This value is informational only and not written! On changes, the #frameData member needs to be
-       * modified instead.
-       */
-      std::vector<ByteRange> frameDataRanges;
-
-      /**
-       * The actual data bytes of contained frames in this Block Element.
-       *
-       * This member is only filled if the ReadOptions#readMediaData is set on reading this Element.
-       * This member is requires for the Block Element to be able to be written back out.
-       */
-      std::vector<std::byte> frameData;
-
-      constexpr auto operator<=>(const BaseBlockElement &) const noexcept = default;
-
-      BML_DEFINE_PRINT(BaseBlockElement, crc32, header, frameDataRanges, frameData, voidElements)
-      std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
-
-    protected:
-      void readValue(bml::BitReader &reader, ElementId id, const ReadOptions &options);
-      void writeValue(bml::BitWriter &writer, ElementId id) const;
-    };
-  } // namespace detail
-
-  ////
-  // Element Types
-  ////
-
-  template <ElementId Id>
-  struct UUIDElement : public detail::BaseUUIDElement {
-    static constexpr ElementId ID = Id;
-    static constexpr ByteCount minNumBits() { return bml::ebml::detail::calcElementSize(ID, NUM_BYTES); };
-    static constexpr ByteCount maxNumBits() { return bml::ebml::detail::calcElementSize(ID, NUM_BYTES); }
-    constexpr ByteCount numBits() const noexcept { return bml::ebml::detail::calcElementSize(ID, NUM_BYTES); }
-
-    UUIDElement &operator=(std::array<std::byte, 16> val) {
-      value = std::move(val);
-      return *this;
-    }
-
-    void read(BitReader &reader, const ReadOptions &options) { BaseUUIDElement::readValue(reader, ID, options); }
-    void write(BitWriter &writer) const { BaseUUIDElement::writeValue(writer, ID); }
-  };
-
-  ////
-  // MKV Elements
-  ////
-
   struct Seek : MasterElement {
     static constexpr ElementId ID{0x4DBB};
 
@@ -179,8 +69,8 @@ namespace bml::ebml::mkv {
     std::optional<Utf8StringElement<0x3E83BB_id>> nextFilename;
     std::vector<BinaryElement<0x4444_id>> segmentFamilies;
     std::vector<ChapterTranslate> chapterTranslates;
-    UnsignedIntElement<0x2AD7B1_id, 1000000> timestampScale;
-    std::optional<FloatElement<0x4489_id>> duration;
+    SegmentTimescaleElement<0x2AD7B1_id, 1000000> timestampScale;
+    std::optional<SegmentTimestampElement<0x4489_id, float>> duration;
     std::optional<DateElement<0x4461_id>> dateUTC;
     std::optional<Utf8StringElement<0x7BA9_id>> title;
     Utf8StringElement<0x4D80_id> muxingApp;
@@ -245,11 +135,11 @@ namespace bml::ebml::mkv {
 
     Block block;
     std::optional<BlockAdditions> blockAdditions;
-    std::optional<UnsignedIntElement<0x9B_id>> blockDuration;
+    std::optional<TrackTimestampElement<0x9B_id>> blockDuration;
     UnsignedIntElement<0xFA_id, 0> referencePriority;
-    std::vector<SignedIntElement<0xFB_id>> referenceBlocks;
+    std::vector<TrackTimestampElement<0xFB_id, intmax_t>> referenceBlocks;
     std::optional<BinaryElement<0xA4_id>> codecState;
-    std::optional<SignedIntElement<0x75A2_id>> discardPadding;
+    std::optional<MatroskaTimestampElement<0x75A2_id>> discardPadding;
 
     constexpr auto operator<=>(const BlockGroup &) const noexcept = default;
 
@@ -264,7 +154,7 @@ namespace bml::ebml::mkv {
   struct Cluster : MasterElement {
     static constexpr ElementId ID{0x1F43B675};
 
-    UnsignedIntElement<0xE7_id> timestamp;
+    SegmentTimestampElement<0xE7_id> timestamp;
     std::optional<UnsignedIntElement<0xA7_id>> position;
     std::optional<UnsignedIntElement<0xAB_id>> prevSize;
     std::vector<SimpleBlock> simpleBlocks;
@@ -597,9 +487,9 @@ namespace bml::ebml::mkv {
     std::optional<BoolElement<0x55AE_id>> flagOriginal;
     std::optional<BoolElement<0x55AF_id>> flagCommentary;
     BoolElement<0x9C_id, true> flagLacing;
-    std::optional<UnsignedIntElement<0x23E383_id>> defaultDuration;
-    std::optional<UnsignedIntElement<0x234E7A_id>> defaultDecodedFieldDuration;
-    FloatElement<0x23314F_id, float, 1.0F> trackTimestampScale;
+    std::optional<MatroskaTimestampElement<0x23E383_id>> defaultDuration;
+    std::optional<MatroskaTimestampElement<0x234E7A_id>> defaultDecodedFieldDuration;
+    TrackTimescaleElement<0x23314F_id, 1.0F> trackTimestampScale;
     UnsignedIntElement<0x55EE_id, 0> maxBlockAdditionID;
     std::vector<BlockAdditionMapping> blockAdditionMappings;
     std::optional<Utf8StringElement<0x536E_id>> name;
@@ -611,8 +501,8 @@ namespace bml::ebml::mkv {
     std::optional<UnsignedIntElement<0x7446_id>> attachmentLink;
     BoolElement<0xAA_id, true> codecDecodeAll;
     std::vector<UnsignedIntElement<0x6FAB_id>> trackOverlays;
-    UnsignedIntElement<0x56AA_id, 0> codecDelay;
-    UnsignedIntElement<0x56BB_id, 0> seekPreRoll;
+    MatroskaTimestampElement<0x56AA_id> codecDelay;
+    MatroskaTimestampElement<0x56BB_id> seekPreRoll;
     std::vector<TrackTranslate> trackTranslates;
     std::optional<Video> video;
     std::optional<Audio> audio;
@@ -650,7 +540,7 @@ namespace bml::ebml::mkv {
   struct CueReference : MasterElement {
     static constexpr ElementId ID{0xDB};
 
-    UnsignedIntElement<0x96_id> cueRefTime;
+    MatroskaTimestampElement<0x96_id> cueRefTime;
 
     constexpr auto operator<=>(const CueReference &) const noexcept = default;
 
@@ -667,7 +557,7 @@ namespace bml::ebml::mkv {
     UnsignedIntElement<0xF7_id> cueTrack;
     UnsignedIntElement<0xF1_id> cueClusterPosition;
     std::optional<UnsignedIntElement<0xF0_id>> cueRelativePosition;
-    std::optional<UnsignedIntElement<0xB2_id>> cueDuration;
+    std::optional<SegmentTimestampElement<0xB2_id>> cueDuration;
     std::optional<UnsignedIntElement<0x5378_id>> cueBlockNumber;
     UnsignedIntElement<0xEA_id, 0> cueCodecState;
     std::vector<CueReference> cueReferences;
@@ -685,7 +575,7 @@ namespace bml::ebml::mkv {
   struct CuePoint : MasterElement {
     static constexpr ElementId ID{0xBB};
 
-    UnsignedIntElement<0xB3_id> cueTime;
+    MatroskaTimestampElement<0xB3_id> cueTime;
     std::vector<CueTrackPositions> cueTrackPositions;
 
     constexpr auto operator<=>(const CuePoint &) const noexcept = default;
@@ -825,8 +715,8 @@ namespace bml::ebml::mkv {
 
     UnsignedIntElement<0x73C4_id> chapterUID;
     std::optional<Utf8StringElement<0x5654_id>> chapterStringUID;
-    UnsignedIntElement<0x91_id> chapterTimeStart;
-    std::optional<UnsignedIntElement<0x92_id>> chapterTimeEnd;
+    MatroskaTimestampElement<0x91_id> chapterTimeStart;
+    std::optional<MatroskaTimestampElement<0x92_id>> chapterTimeEnd;
     BoolElement<0x98_id, false> chapterFlagHidden;
     BoolElement<0x4598_id, true> chapterFlagEnabled;
     std::optional<UUIDElement<0x6E67_id>> chapterSegmentUUID;
@@ -1014,14 +904,27 @@ namespace bml::ebml::mkv {
 
     /**
      * Returns an input range producing each stored Frame of the given Track number.
+     *
+     * If the optional start parameter is given, the returned view will start off at the next Frame with a timestamp not
+     * smaller than the given value.
+     *
+     * NOTE: Only the first Frames per Block are considered when searching for a specified start timestamp, i.e. the
+     * effective timestamps of the other laced Frames are not interpolated!
      */
-    FrameView viewFrames(uint32_t trackNumber) const;
+    FrameView viewFrames(uint32_t trackNumber, const TrackTimestamp<> &start = {}) const;
   };
 
   /**
    * A Frame of data of a single Track, as defined in the Matroska Block specification.
    */
   struct Frame {
+    /**
+     * The timestamp of this Frame in the associated Track's timescale.
+     *
+     * For laced Frames, only the first Frame in the Block has its timestamp set.
+     */
+    std::optional<TrackTimestamp<>> timestamp;
+
     /**
      * Range of the Frame's data relative to the start of the read byte source.
      */
@@ -1040,6 +943,9 @@ namespace bml::ebml::mkv {
 
   /**
    * Read-only view for accessing Frames of a specific Track within a Matroska object.
+   *
+   * NOTE: Since this object reads from the originating Matroska object, it SHOULD NOT be modified/moved in the
+   * meantime!
    */
   class FrameView : public std::ranges::view_base {
     struct Sentinel {};
@@ -1050,7 +956,8 @@ namespace bml::ebml::mkv {
       using difference_type = std::ptrdiff_t;
 
       explicit Iterator() noexcept = default;
-      Iterator(std::span<const Cluster> clusters, uint32_t trackNum) noexcept;
+      Iterator(std::span<const Cluster> clusters, uint32_t trackNum, const TrackTimescale &scale,
+               const TrackTimestamp<> &start) noexcept;
 
       Iterator &operator++() noexcept {
         advance();
@@ -1077,20 +984,24 @@ namespace bml::ebml::mkv {
     private:
       std::span<const Cluster> pendingClusters;
       const detail::BaseBlockElement *currentBlock;
+      TrackTimescale timescale;
       uint32_t trackNumber;
       uint8_t currentLaceIndex;
     };
 
   public:
-    constexpr FrameView(std::span<const Cluster> allClusters, uint32_t track) noexcept
-        : clusters(allClusters), trackNumber(track) {}
+    constexpr FrameView(std::span<const Cluster> allClusters, uint32_t track, const TrackTimescale &scale,
+                        const TrackTimestamp<> &start) noexcept
+        : clusters(allClusters), trackNumber(track), timescale(scale), startTime(start) {}
 
-    Iterator begin() const noexcept { return Iterator{clusters, trackNumber}; }
+    Iterator begin() const noexcept { return Iterator{clusters, trackNumber, timescale, startTime}; }
     constexpr Sentinel end() const noexcept { return Sentinel{}; }
 
   private:
     std::span<const Cluster> clusters;
     uint32_t trackNumber;
+    TrackTimescale timescale;
+    TrackTimestamp<> startTime;
   };
 
 } // namespace bml::ebml::mkv

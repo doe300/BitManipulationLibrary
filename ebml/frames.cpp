@@ -13,20 +13,35 @@ namespace bml::ebml::mkv {
 
   static void advanceToNextBlockForTrack(std::span<const Cluster> &clusters,
                                          detail::BaseBlockElement const *&currentBlock, uint32_t trackNumber) noexcept;
+  static void advanceToFirstBlockForTrack(std::span<const Cluster> &clusters,
+                                          detail::BaseBlockElement const *&currentBlock, uint32_t trackNumber,
+                                          const TrackTimestamp<> &start, const TrackTimescale &scale) noexcept;
   [[nodiscard]] static bool advanceToNextLaceIndex(const detail::BaseBlockElement &block, uint8_t &laceIndex);
 
-  FrameView::Iterator::Iterator(std::span<const Cluster> clusters, uint32_t trackNum) noexcept
-      : pendingClusters(clusters), currentBlock(nullptr), trackNumber(trackNum), currentLaceIndex(0) {
-    static_assert(sizeof(FrameView::Iterator) <= 4 * sizeof(std::size_t));
+  FrameView::Iterator::Iterator(std::span<const Cluster> clusters, uint32_t trackNum, const TrackTimescale &scale,
+                                const TrackTimestamp<> &start) noexcept
+      : pendingClusters(clusters), currentBlock(nullptr), timescale(scale), trackNumber(trackNum), currentLaceIndex(0) {
+    static_assert(sizeof(FrameView::Iterator) <= 5 * sizeof(std::size_t));
     static_assert(std::input_iterator<FrameView::Iterator>);
     static_assert(std::sentinel_for<Sentinel, Iterator>);
 
-    advanceToNextBlockForTrack(pendingClusters, currentBlock, trackNumber);
+    advanceToFirstBlockForTrack(pendingClusters, currentBlock, trackNumber, start, scale);
+  }
+
+  static TrackTimestamp<> getBlockTimestamp(const Cluster &cluster, const detail::BaseBlockElement &block,
+                                            const TrackTimescale &scale) noexcept {
+    auto timestampValue = static_cast<intmax_t>((cluster.timestamp.get() / scale).value) + block.header.timestampOffset;
+    return TrackTimestamp<>{static_cast<uintmax_t>(timestampValue)};
   }
 
   Frame FrameView::Iterator::operator*() const noexcept {
     if (pendingClusters.empty() || !currentBlock) {
       return {};
+    }
+
+    std::optional<TrackTimestamp<>> timestamp{};
+    if (currentLaceIndex == 0) {
+      timestamp = getBlockTimestamp(pendingClusters.front(), *currentBlock, timescale);
     }
 
     auto range = currentBlock->frameDataRanges.at(currentLaceIndex);
@@ -36,7 +51,7 @@ namespace bml::ebml::mkv {
       data = std::span{currentBlock->frameData}.subspan(offset.num, range.size.num);
     }
 
-    return {range, data};
+    return {timestamp, range, data};
   }
 
   bool FrameView::Iterator::operator==(const Iterator &other) const noexcept {
@@ -187,6 +202,30 @@ namespace bml::ebml::mkv {
     clusters = clusters.subspan<1>();
     currentBlock = nullptr;
     advanceToNextBlockForTrack(clusters, currentBlock, trackNumber);
+  }
+
+  static void advanceToFirstBlockForTrack(std::span<const Cluster> &clusters,
+                                          detail::BaseBlockElement const *&currentBlock, uint32_t trackNumber,
+                                          const TrackTimestamp<> &start, const TrackTimescale &scale) noexcept {
+    if (clusters.empty()) {
+      currentBlock = nullptr;
+      return;
+    }
+    if (start.value == 0) {
+      return advanceToNextBlockForTrack(clusters, currentBlock, trackNumber);
+    }
+
+    // binary search through clusters to find the last smaller one (first candidate)
+    auto it = std::lower_bound(
+        clusters.begin(), clusters.end(), start * scale,
+        [](const Cluster &cluster, const SegmentTimestamp<> &time) { return cluster.timestamp < time; });
+    // The last Cluster with a timestamp smaller than the target may be the Cluster containing the target timestamp
+    it = it != clusters.begin() ? it - 1 : it;
+    clusters = clusters.subspan(static_cast<std::size_t>(std::distance(clusters.begin(), it)));
+
+    do {
+      advanceToNextBlockForTrack(clusters, currentBlock, trackNumber);
+    } while (!clusters.empty() && currentBlock && getBlockTimestamp(clusters.front(), *currentBlock, scale) < start);
   }
 
   [[nodiscard]] static bool advanceToNextLaceIndex(const detail::BaseBlockElement &block, uint8_t &laceIndex) {
