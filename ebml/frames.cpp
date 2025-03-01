@@ -1,6 +1,8 @@
 #include "mkv.hpp"
 
+#include "errors.hpp"
 #include "internal.hpp"
+#include "mkv_frames.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -10,6 +12,10 @@ namespace bml::ebml::mkv {
   static_assert(std::ranges::input_range<FrameView>);
   static_assert(!std::ranges::borrowed_range<FrameView>);
   static_assert(std::ranges::view<FrameView>);
+
+  static_assert(std::ranges::input_range<FillFrameDataView<FrameView, std::reference_wrapper<std::istream>>>);
+  static_assert(!std::ranges::borrowed_range<FillFrameDataView<FrameView, std::reference_wrapper<std::istream>>>);
+  static_assert(std::ranges::view<FillFrameDataView<FrameView, std::reference_wrapper<std::istream>>>);
 
   static void advanceToNextBlockForTrack(std::span<const Cluster> &clusters,
                                          detail::BaseBlockElement const *&currentBlock, uint32_t trackNumber) noexcept;
@@ -237,4 +243,34 @@ namespace bml::ebml::mkv {
     laceIndex = 0;
     return false;
   }
+
+  namespace detail {
+    FilledFrame fillFrame(Frame frame, std::span<const std::byte> data) {
+      if (frame.dataRange.empty()) {
+        return {std::move(frame), {}};
+      }
+
+      frame.data = frame.dataRange.applyTo(data);
+      if (frame.data.empty()) {
+        throw EndOfStreamError("Frame data range " + frame.dataRange.toString() + " lies outside of " +
+                               std::to_string(data.size()) + " bytes of data");
+      }
+      return {std::move(frame), {}};
+    }
+
+    FilledFrame fillFrame(Frame frame, std::istream &input) {
+      if (frame.dataRange.empty()) {
+        return {std::move(frame), {}};
+      }
+
+      std::vector<std::byte> buffer(frame.dataRange.size.num);
+      input.seekg(static_cast<std::ios::off_type>(frame.dataRange.offset.num), std::ios::beg);
+      input.read(reinterpret_cast<char *>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
+      if (input.eof()) {
+        throw EndOfStreamError("Error reading frame data range " + frame.dataRange.toString() + " from input stream");
+      }
+      frame.data = buffer;
+      return {std::move(frame), std::move(buffer)};
+    }
+  } // namespace detail
 } // namespace bml::ebml::mkv

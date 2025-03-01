@@ -172,6 +172,7 @@ namespace bml {
 
     constexpr auto operator<=>(const ByteRange &) const noexcept = default;
     constexpr explicit operator bool() const noexcept { return static_cast<bool>(size); }
+    constexpr bool empty() const noexcept { return static_cast<bool>(!size); }
 
     std::string toString() const;
     friend std::ostream &operator<<(std::ostream &os, const ByteRange &range) { return os << range.toString(); }

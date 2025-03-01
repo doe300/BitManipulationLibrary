@@ -2,6 +2,7 @@
 #include "mkv.hpp"
 
 #include "internal.hpp"
+#include "mkv_frames.hpp"
 
 #include <algorithm>
 #include <format>

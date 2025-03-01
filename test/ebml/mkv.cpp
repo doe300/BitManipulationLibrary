@@ -1,6 +1,8 @@
 #include "mkv.hpp"
+#include "mkv_frames.hpp"
 
 #include "ebml_common.hpp"
+#include "errors.hpp"
 
 #include "cpptest-main.h"
 
@@ -867,6 +869,7 @@ public:
     TEST_ADD(TestMkvFrames::testBlockFixedLacing);
     TEST_ADD(TestMkvFrames::testBlockEBMLLacing);
     TEST_ADD(TestMkvFrames::testFrameView);
+    TEST_ADD(TestMkvFrames::testFillFrameDataView);
   }
 
   void testBlockHeader() {
@@ -1108,6 +1111,127 @@ frames:
       tmp = mkv.viewFrames(2U, TrackTimestamp<>{1500}) | std::views::common;
       frames = std::vector<Frame>(tmp.begin(), tmp.end());
       TEST_ASSERT(frames.empty());
+    }
+  }
+
+  void testFillFrameDataView() {
+    const auto DATA = toBytes({// 1st frame
+                               0xDE, 0xAD, 0xBE, 0xEF,
+                               // 2nd frame
+                               0xDE, 0xAD, 0xBE, 0xEF,
+                               // garbage
+                               0xFF, 0x00, 0xBA, 0xBE, 0xFF, 0xFF, 0xFF,
+                               // 3rd frame
+                               0xDE, 0xAD, 0xBE, 0xEF,
+                               // 4th frame
+                               0xB0, 0x0B,
+                               // 5th frame
+                               0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0B});
+    const std::vector<std::pair<uint64_t, std::vector<std::byte>>> FRAMES_DATA{
+        {1000 - 42, toBytes({0xDE, 0xAD, 0xBE, 0xEF})},
+        {1000 + 22, toBytes({0xDE, 0xAD, 0xBE, 0xEF})},
+        {1000 + 70, toBytes({0xDE, 0xAD, 0xBE, 0xEF})},
+        {0, toBytes({0xB0, 0x0B})},
+        {0, toBytes({0xDE, 0xAD, 0xBE, 0xEF, 0xF0, 0x0B})}};
+    Matroska mkv{};
+
+    {
+      TrackEntry track{};
+      track.trackNumber = 1U;
+      Tracks tracks{};
+      tracks.trackEntries.push_back(std::move(track));
+      mkv.segment.tracks = std::move(tracks);
+
+      Cluster cluster{};
+      cluster.timestamp = SegmentTimestamp<>{1000};
+      {
+        SimpleBlock block{};
+        block.header.trackNumber = 1;
+        block.header.timestampOffset = -42;
+        block.frameDataRanges.push_back({0_bytes, 4_bytes});
+        block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xEF});
+        cluster.simpleBlocks.push_back(std::move(block));
+      }
+      {
+        SimpleBlock block{};
+        block.header.trackNumber = 1;
+        block.header.timestampOffset = 22;
+        block.frameDataRanges.push_back({4_bytes, 4_bytes});
+        block.frameData = toBytes({0xDE, 0xAD, 0xBE, 0xEF});
+        cluster.simpleBlocks.push_back(std::move(block));
+      }
+      {
+        BlockGroup group{};
+        group.block.header.trackNumber = 1;
+        group.block.header.timestampOffset = 70;
+        group.block.header.lacing = BlockHeader::Lacing::XIPH;
+        group.block.frameDataRanges.push_back({15_bytes, 4_bytes});
+        group.block.frameDataRanges.push_back({19_bytes, 2_bytes});
+        group.block.frameDataRanges.push_back({21_bytes, 6_bytes});
+        group.block.frameDataRanges.push_back({27_bytes, 2_bytes});
+        group.block.frameData = toBytes({0x03, 0x04, 0x2, 0x06, 0xDE, 0xAD, 0xBE, 0xEF, 0xB0, 0x0B, 0xDE, 0xAD, 0xBE,
+                                         0xEF, 0xF0, 0x0B, 0xDE, 0xAD});
+        cluster.blockGroups.push_back(std::move(group));
+      }
+      mkv.segment.clusters.push_back(std::move(cluster));
+    }
+
+    auto range = mkv.viewFrames(1) | std::ranges::views::take(5) | fillFrameData(DATA);
+    auto it = FRAMES_DATA.begin();
+    for (auto frame : range) {
+      TEST_ASSERT_FALSE(frame.first.data.empty());
+      TEST_ASSERT(frame.second.empty());
+
+      if (it->first == 0) {
+        TEST_ASSERT_FALSE(frame.first.timestamp);
+      } else {
+        TEST_ASSERT_EQUALS(it->first, frame.first.timestamp.value().value);
+      }
+      TEST_ASSERT_EQUALS(it->second, frame.first.data);
+
+      ++it;
+    }
+    TEST_ASSERT(it == FRAMES_DATA.end());
+
+    std::stringstream ss{};
+    ss.write(reinterpret_cast<const char *>(DATA.data()), static_cast<std::streamsize>(DATA.size()));
+    auto range2 = mkv.viewFrames(1) | std::ranges::views::take(3) | fillFrameData(ss);
+    it = FRAMES_DATA.begin();
+    for (auto frame : range2) {
+      TEST_ASSERT_FALSE(frame.first.data.empty());
+      TEST_ASSERT_FALSE(frame.second.empty());
+      TEST_ASSERT_EQUALS(frame.second, frame.first.data);
+
+      if (it->first == 0) {
+        TEST_ASSERT_FALSE(frame.first.timestamp);
+      } else {
+        TEST_ASSERT_EQUALS(it->first, frame.first.timestamp.value().value);
+      }
+      TEST_ASSERT_EQUALS(it->second, frame.first.data);
+
+      ++it;
+    }
+    TEST_ASSERT_EQUALS(3, std::distance(FRAMES_DATA.begin(), it));
+
+    // Check error on Frame byte range not in source
+    {
+      auto fullIt = (mkv.viewFrames(1) | fillFrameData(DATA)).begin();
+      for (uint32_t i = 0; i < 5; ++i) {
+        TEST_THROWS_NOTHING(*fullIt);
+        ++fullIt;
+      }
+      TEST_THROWS(*fullIt, EndOfStreamError);
+    }
+
+    {
+      std::stringstream stream{};
+      stream.write(reinterpret_cast<const char *>(DATA.data()), static_cast<std::streamsize>(DATA.size()));
+      auto fullIt = (mkv.viewFrames(1) | fillFrameData(stream)).begin();
+      for (uint32_t i = 0; i < 5; ++i) {
+        TEST_THROWS_NOTHING(*fullIt);
+        ++fullIt;
+      }
+      TEST_THROWS(*fullIt, EndOfStreamError);
     }
   }
 
