@@ -271,6 +271,33 @@ namespace bml::ebml {
     void write(BitWriter &writer) const { this->writeValue(writer, ID, DEFAULT); }
   };
 
+  /**
+   * Specialization of the Unsigned Integer Element using an enum type as internal storage.
+   */
+  template <ElementId Id, Enum T, T Default = {}>
+    requires(std::unsigned_integral<std::underlying_type_t<T>>)
+  struct EnumElement : public UnsignedIntElement<Id, static_cast<uintmax_t>(Default)> {
+    using Base = UnsignedIntElement<Id, static_cast<uintmax_t>(Default)>;
+    static constexpr ByteCount maxNumBits() { return detail::calcElementSize(Id, ByteCount{sizeof(T)}); }
+
+    constexpr EnumElement() noexcept = default;
+    explicit constexpr EnumElement(T val) noexcept : Base(static_cast<uintmax_t>(val)) {}
+
+    constexpr auto operator<=>(const EnumElement &other) const noexcept {
+      return this->value <=> static_cast<uintmax_t>(other.value);
+    }
+    constexpr auto operator<=>(const T &val) const noexcept { return this->value <=> static_cast<uintmax_t>(val); }
+
+    constexpr T get() const noexcept { return static_cast<T>(this->value); }
+    constexpr operator T() const noexcept { return static_cast<T>(this->value); }
+    void set(T val) noexcept { this->value = static_cast<uintmax_t>(val); }
+
+    EnumElement &operator=(T val) {
+      this->value = static_cast<uintmax_t>(val);
+      return *this;
+    }
+  };
+
   template <ElementId Id, typename T = float, T Default = T{0.0}>
   struct FloatElement : public detail::BaseSimpleElement<T> {
     static constexpr ElementId ID = Id;

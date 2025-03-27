@@ -165,7 +165,7 @@ contentCompression:
     elem.crc32 = 0x5505423D;
     elem.trackNumber = 1;
     elem.trackUID = 0x6F1A06B3;
-    elem.trackType = 1;
+    elem.trackType = TrackEntry::Type::VIDEO;
     elem.flagLacing = false;
     elem.defaultDuration = MatroskaTimestamp{0x027BC869};
     elem.language = "und";
@@ -230,7 +230,7 @@ video:
       entry.crc32 = 0x4C02C705;
       entry.trackNumber = 1;
       entry.trackUID = 0x6F1A06B3;
-      entry.trackType = 1;
+      entry.trackType = TrackEntry::Type::VIDEO;
       entry.flagLacing = false;
       entry.defaultDuration = MatroskaTimestamp{0x027BC869};
       entry.language = "und";
@@ -480,7 +480,7 @@ blockGroups:
       TrackEntry entry{};
       entry.crc32 = 0xC5424727;
       entry.trackNumber = 1U;
-      entry.trackType = 1U;
+      entry.trackType = TrackEntry::Type::VIDEO;
       entry.codecID = "V_MPEG4/ISO/AVC";
       Video video{};
       video.pixelWidth = 0x400;
@@ -491,7 +491,7 @@ blockGroups:
       entry = {};
       entry.crc32 = 0x18CCF9AE;
       entry.trackNumber = 2;
-      entry.trackType = 2;
+      entry.trackType = TrackEntry::Type::AUDIO;
       entry.codecID = "A_MPEG/L3";
       Audio audio{};
       audio.samplingFrequency = 48000.0F;

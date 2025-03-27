@@ -162,7 +162,8 @@ namespace bml::ebml::mkv {
     case BlockHeader::Lacing::XIPH:
       return readXiphFrameRanges(reader, dataRange, copyFrameData);
     }
-    return {};
+    throw std::runtime_error{"Unknown MKV Block header lacing type: " +
+                             std::to_string(static_cast<uint32_t>(header.lacing.get()))};
   }
 
   static void writeXiphSize(BitWriter &writer, std::size_t value) {

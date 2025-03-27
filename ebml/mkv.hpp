@@ -234,7 +234,64 @@ namespace bml::ebml::mkv {
   struct Colour : MasterElement {
     static constexpr ElementId ID{0x55B0};
 
-    UnsignedIntElement<0x55B1_id, 2> matrixCoefficients;
+    enum class Coefficients : uint8_t {
+      IDENTITY = 0,
+      ITU_R_BT_709 = 1,
+      UNSPECIFIED = 2,
+      RESERVES = 3,
+      US_FCC_73_682 = 4,
+      ITU_R_BT_470BG = 5,
+      SMPTE_170M = 6,
+      SMPTE_240M = 7,
+      YCoCg = 8,
+      ITU_R_BT_BT2020_NCL = 9,
+      ITU_R_BT_BT2020_CL = 10,
+      SMPTE_ST_2085 = 11,
+      CHROMA_DERIVED_NCL = 12,
+      CHROMA_DERIVED_CL = 13,
+      ITU_R_BT_2100 = 14,
+    };
+
+    enum class Characteristics : uint8_t {
+      RESERVED = 0,
+      ITU_R_BT_709 = 1,
+      UNSPECIFIED = 2,
+      RESERVED2 = 3,
+      ITU_R_BT_470M = 4,
+      ITU_R_BT_470BG = 5,
+      SMPTE_170M = 6,
+      SMPTE_240M = 7,
+      LINEAR = 8,
+      LOG = 9,
+      LOG_SQRT = 10,
+      IEC_61966_2_4 = 11,
+      ITU_R_BT_1361 = 12,
+      IEC_61966_2_1 = 13,
+      ITU_R_BT_2020_10BIT = 14,
+      ITU_R_BT_2020_12BIT = 15,
+      ITU_R_BT_2100_PQ = 16,
+      SMPTE_ST_428_1 = 17,
+      ARIB_STD_B67_HLG = 18
+    };
+
+    enum class Primaries : uint8_t {
+      RESERVED = 0,
+      ITU_R_BT_709 = 1,
+      UNSPECIFIED = 2,
+      RESERVED2 = 3,
+      ITU_R_BT_470M = 4,
+      ITU_R_BT_470BG = 5,
+      SMPTE_170M = 6,
+      SMPTE_240M = 7,
+      FILM = 8,
+      ITU_R_BT_2020 = 9,
+      SMPTE_ST_428_1 = 10,
+      SMPTE_RP_432_2 = 11,
+      SMPTE_EG_432_2 = 12,
+      EBU_TECH_3213_E = 22,
+    };
+
+    EnumElement<0x55B1_id, Coefficients, Coefficients::UNSPECIFIED> matrixCoefficients;
     UnsignedIntElement<0x55B2_id, 0> bitsPerChannel;
     std::optional<UnsignedIntElement<0x55B3_id>> chromaSubsamplingHorz;
     std::optional<UnsignedIntElement<0x55B4_id>> chromaSubsamplingVert;
@@ -243,8 +300,8 @@ namespace bml::ebml::mkv {
     UnsignedIntElement<0x55B7_id, 0> chromaSitingHorz;
     UnsignedIntElement<0x55B8_id, 0> chromaSitingVert;
     UnsignedIntElement<0x55B9_id, 0> range;
-    UnsignedIntElement<0x55BA_id, 2> transferCharacteristics;
-    UnsignedIntElement<0x55BB_id, 2> primaries;
+    EnumElement<0x55BA_id, Characteristics, Characteristics::UNSPECIFIED> transferCharacteristics;
+    EnumElement<0x55BB_id, Primaries, Primaries::UNSPECIFIED> primaries;
     std::optional<UnsignedIntElement<0x55BC_id>> maxCLL;
     std::optional<UnsignedIntElement<0x55BD_id>> maxFALL;
     std::optional<MasteringMetadata> masteringMetadata;
@@ -263,7 +320,14 @@ namespace bml::ebml::mkv {
   struct Projection : MasterElement {
     static constexpr ElementId ID{0x7670};
 
-    UnsignedIntElement<0x7671_id, 0> projectionType;
+    enum class Type : uint8_t {
+      RECTANGULAR = 0,
+      EQUIRECTANGULAR = 1,
+      CUBEMAP = 2,
+      MESH = 3,
+    };
+
+    EnumElement<0x7671_id, Type, Type::RECTANGULAR> projectionType;
     std::optional<BinaryElement<0x7672_id>> projectionPrivate;
     FloatElement<0x7673_id, float, 0.0F> projectionPoseYaw;
     FloatElement<0x7674_id, float, 0.0F> projectionPosePitch;
@@ -282,7 +346,21 @@ namespace bml::ebml::mkv {
   struct Video : MasterElement {
     static constexpr ElementId ID{0xE0};
 
-    UnsignedIntElement<0x9A_id, 0> flagInterlaced;
+    enum class Interlacing : uint8_t {
+      UNDETERMINATED = 0,
+      INTERLACED = 1,
+      PROGRESSIVE = 2,
+    };
+
+    enum class DisplayUnit : uint8_t {
+      PIXELS = 0,
+      CENTIMETERS = 1,
+      INCHES = 2,
+      DISPLAY_ASPECT_RATIO = 3,
+      UNKNOWN = 4,
+    };
+
+    EnumElement<0x9A_id, Interlacing, Interlacing::UNDETERMINATED> flagInterlaced;
     UnsignedIntElement<0x9D_id, 2> fieldOrder;
     UnsignedIntElement<0x53B8_id, 0> stereoMode;
     UnsignedIntElement<0x53C0_id, 0> alphaMode;
@@ -295,7 +373,7 @@ namespace bml::ebml::mkv {
     UnsignedIntElement<0x54DD_id, 0> pixelCropRight;
     std::optional<UnsignedIntElement<0x54B0_id>> displayWidth;
     std::optional<UnsignedIntElement<0x54BA_id>> displayHeight;
-    UnsignedIntElement<0x54B2_id, 0> displayUnit;
+    EnumElement<0x54B2_id, DisplayUnit, DisplayUnit::PIXELS> displayUnit;
     std::optional<BinaryElement<0x2EB524_id>> uncompressedFourCC;
     std::optional<Colour> colour;
     std::optional<Projection> projection;
@@ -474,9 +552,20 @@ namespace bml::ebml::mkv {
   struct TrackEntry : MasterElement {
     static constexpr ElementId ID{0xAE};
 
+    enum class Type : uint8_t {
+      VIDEO = 1,
+      AUDIO = 2,
+      COMPLEX = 3,
+      LOGO = 16,
+      SUBTITLE = 17,
+      BUTTONS = 18,
+      CONTROL = 32,
+      METADATA = 33,
+    };
+
     UnsignedIntElement<0xD7_id> trackNumber;
     UnsignedIntElement<0x73C5_id> trackUID;
-    UnsignedIntElement<0x83_id> trackType;
+    EnumElement<0x83_id, Type> trackType;
     BoolElement<0xB9_id, true> flagEnabled;
     BoolElement<0x88_id, true> flagDefault;
     BoolElement<0x55AA_id, false> flagForced;
@@ -712,6 +801,16 @@ namespace bml::ebml::mkv {
   struct ChapterAtom : MasterElement {
     static constexpr ElementId ID{0xB6};
 
+    enum class SkipType : uint8_t {
+      NONE = 0,
+      OPENING_CREDITS = 1,
+      END_CREDITS = 2,
+      RECAP = 3,
+      NEXT_PREVIEW = 4,
+      PREVIEW = 5,
+      ADVERTISEMENT = 6,
+    };
+
     UnsignedIntElement<0x73C4_id> chapterUID;
     std::optional<Utf8StringElement<0x5654_id>> chapterStringUID;
     MatroskaTimestampElement<0x91_id> chapterTimeStart;
@@ -719,7 +818,7 @@ namespace bml::ebml::mkv {
     BoolElement<0x98_id, false> chapterFlagHidden;
     BoolElement<0x4598_id, true> chapterFlagEnabled;
     std::optional<UUIDElement<0x6E67_id>> chapterSegmentUUID;
-    std::optional<UnsignedIntElement<0x4588_id>> chapterSkipType;
+    std::optional<EnumElement<0x4588_id, SkipType>> chapterSkipType;
     std::optional<UnsignedIntElement<0x6EBC_id>> chapterSegmentEditionUID;
     std::optional<UnsignedIntElement<0x63C3_id>> chapterPhysicalEquiv;
     std::optional<ChapterTrack> chapterTrack;
@@ -775,7 +874,17 @@ namespace bml::ebml::mkv {
   struct Targets : MasterElement {
     static constexpr ElementId ID{0x63C0};
 
-    UnsignedIntElement<0x68CA_id, 50> targetTypeValue;
+    enum class Type : uint8_t {
+      COLLECTION = 70,
+      EDITION = 60,
+      ALBUM = 50,
+      PART = 40,
+      TRACK = 30,
+      SUBTRACK = 20,
+      SHOT = 10,
+    };
+
+    EnumElement<0x68CA_id, Type, Type::ALBUM> targetTypeValue;
     std::optional<StringElement<0x63CA_id>> targetType;
     std::vector<UnsignedIntElement<0x63C5_id, 0>> tagTrackUIDs;
     std::vector<UnsignedIntElement<0x63C9_id, 0>> tagEditionUIDs;

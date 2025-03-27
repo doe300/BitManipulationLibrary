@@ -37,6 +37,12 @@ struct TestDynamicElement final : MasterElement {
   static void copy(BitReader &reader, BitWriter &writer) { bml::ebml::detail::copyElement(reader, writer, {ID}); }
 };
 
+enum class TestEnum : uint8_t {
+  FOO = 1,
+  BAR = 2,
+  BAZ = 177,
+};
+
 class TestBaseElements : public TestElementsBase {
 public:
   TestBaseElements() : TestElementsBase("BaseElements") {
@@ -44,6 +50,7 @@ public:
     TEST_ADD(TestBaseElements::testBoolElement);
     TEST_ADD(TestBaseElements::testSignedIntElement);
     TEST_ADD(TestBaseElements::testUnsignedIntElement);
+    TEST_ADD(TestBaseElements::testEnumElement);
     TEST_ADD(TestBaseElements::testFloatElement);
     TEST_ADD(TestBaseElements::testDateElement);
     TEST_ADD(TestBaseElements::testAsciiStringElement);
@@ -120,6 +127,17 @@ public:
     elem.set(0xFFFFFFFFFFFFFFFFULL);
     testValueElement(elem, elem.get(), {0x45, 0xA3, 0x88, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
                      "18446744073709551615", 11_bytes);
+  }
+
+  void testEnumElement() {
+    EnumElement<0x45A3_id, TestEnum, TestEnum::BAR> elem{};
+    static_assert(EnumElement<0x45A3_id, TestEnum>::maxNumBits() == 4_bytes);
+
+    testValueElementDefaultValue(elem, {0x45, 0xA3, 0x80}, "2", 3_bytes, TestEnum::BAR);
+    elem.set(TestEnum::BAZ);
+    testValueElement(elem, elem.get(), {0x45, 0xA3, 0x81, 0xB1}, "177", 4_bytes);
+    elem.set(TestEnum::FOO);
+    testValueElement(elem, elem.get(), {0x45, 0xA3, 0x81, 0x01}, "1", 4_bytes);
   }
 
   void testFloatElement() {
