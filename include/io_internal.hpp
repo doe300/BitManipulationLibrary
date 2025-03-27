@@ -44,7 +44,7 @@ namespace bml::detail {
   };
 
   template <typename Type>
-  concept HasSizeMembers = HasMinMaxSizeMembers<Type> && requires(const Type &obj) {
+  concept HasSizeMember = requires(const Type &obj) {
     { obj.numBits() } -> std::convertible_to<BitCount>;
   };
 
@@ -110,6 +110,13 @@ namespace bml::detail {
     static constexpr BitCount calcMinNumBits() noexcept { return Type::minNumBits(); }
     static constexpr BitCount calcMaxNumBits() noexcept { return Type::maxNumBits(); }
     static constexpr bool isFixedSize() noexcept { return Type::minNumBits() == Type::maxNumBits(); }
+  };
+
+  template <>
+  struct SizeHelper<std::monostate> {
+    static constexpr BitCount calcMinNumBits() noexcept { return 0_bits; }
+    static constexpr BitCount calcMaxNumBits() noexcept { return 0_bits; }
+    static constexpr bool isFixedSize() noexcept { return true; }
   };
 
   template <>

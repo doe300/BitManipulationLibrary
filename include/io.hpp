@@ -134,6 +134,8 @@ namespace bml {
   // WRITE
   ////
 
+  inline void write(BitWriter &, const std::monostate &) { /* no-op */ }
+
   /**
    * Writes the given object to the given BitWriter using its member write() function.
    */
@@ -302,7 +304,7 @@ namespace bml {
    */
   template <typename Type>
   constexpr BitCount numBits(const Type &obj) noexcept
-    requires(detail::HasSizeMembers<Type>)
+    requires(detail::HasSizeMember<Type>)
   {
     return obj.numBits();
   }
@@ -312,7 +314,7 @@ namespace bml {
    */
   template <typename Type>
   constexpr BitCount numBits(const Type & /*obj */) noexcept
-    requires(!detail::HasSizeMembers<Type> && detail::SizeHelper<Type>::isFixedSize())
+    requires(!detail::HasSizeMember<Type> && detail::SizeHelper<Type>::isFixedSize())
   {
     return bml::minNumBits<Type>();
   }
@@ -322,7 +324,7 @@ namespace bml {
    */
   template <typename Type>
   constexpr BitCount numBits(const Type &object) noexcept
-    requires(!detail::HasSizeMembers<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
+    requires(!detail::HasSizeMember<Type> && !detail::SizeHelper<Type>::isFixedSize() &&
              detail::AllowedDestructurable<Type>)
   {
     return detail::numBitsMembers(object);

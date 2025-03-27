@@ -175,8 +175,9 @@ public:                                                                         
       friend std::ostream &operator<<(std::ostream &os, const PrintView<std::variant<Types...>> &view)
         requires(IsPrintable<Types> && ...)
       {
-        return std::visit([&os](const auto &val) -> std::ostream & { return os << PrintView<decltype(val)>{val}; },
-                          view.value);
+        return std::visit(
+            [&os](const auto &val) -> std::ostream & { return os << PrintView<std::decay_t<decltype(val)>>{val}; },
+            view.value);
       }
 
       const std::variant<Types...> &value;
@@ -256,6 +257,14 @@ public:                                                                         
       friend std::ostream &operator<<(std::ostream &os, const PrintView<std::u8string> &view);
 
       const std::u8string &value;
+      [[no_unique_address]] ViewOnly viewOnly{};
+    };
+
+    template <>
+    struct PrintView<std::monostate> {
+      friend std::ostream &operator<<(std::ostream &os, const PrintView<std::monostate> &view);
+
+      const std::monostate &value;
       [[no_unique_address]] ViewOnly viewOnly{};
     };
 

@@ -394,6 +394,7 @@ public:
     TEST_ADD(TestYAML::testSimple);
     TEST_ADD(TestYAML::testObject);
     TEST_ADD(TestYAML::testCollections);
+    TEST_ADD(TestYAML::testVariants);
     TEST_ADD(TestYAML::testComplex);
   }
 
@@ -444,6 +445,30 @@ c: -3)");
 - a: 42
   b: 42
   c: 42)");
+
+    checkPrint(std::vector<std::vector<int>>{{3, 4, 5}, {1, 2, 3}, {7, 8, 9}}, R"(
+- [3, 4, 5, ]
+- [1, 2, 3, ]
+- [7, 8, 9, ])");
+
+    checkPrint(std::vector<std::optional<int>>{{3}, {}, {-5}}, R"(
+- 3
+- null
+- -5)");
+
+    checkPrint(std::vector<std::optional<Member>>{Member{13, 3000, -3}, {}, Member{1, 3, -3}}, R"(
+- a: 13
+  b: 3000
+  c: -3
+- null
+- a: 1
+  b: 3
+  c: -3)");
+  }
+
+  void testVariants() {
+    checkPrint(std::variant<std::monostate, uint32_t>{}, "null");
+    checkPrint(std::variant<std::monostate, uint32_t>{13U}, "13");
   }
 
   void testComplex() {

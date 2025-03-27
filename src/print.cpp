@@ -86,9 +86,9 @@ namespace bml::detail {
 #endif
   }();
 
-  std::ostream &printUtf8String(std::ostream &os, std::u8string_view val) {
+  std::ostream &printUtf8String(std::ostream &os, std::u8string_view val, char escape = '\\') {
     if (NATIVE_UTF8) {
-      return os << '\'' << std::string_view(reinterpret_cast<const char *>(val.data()), val.size()) << '\'';
+      return os << std::quoted(std::string_view(reinterpret_cast<const char *>(val.data()), val.size()), '\'', escape);
     }
 #ifdef _MSC_VER
     std::wstring tmp(val.size() * 2U, L'\0');
@@ -99,7 +99,7 @@ namespace bml::detail {
     numChars = WideCharToMultiByte(CP_ACP, 0, tmp.data(), static_cast<int>(tmp.size()), &result.front(),
                                    static_cast<int>(result.size()), nullptr, nullptr);
     result.resize(numChars);
-    return os << '\'' << result << '\'';
+    return os << std::quoted(result, '\'', escape);
 #else
     return os << "(unknown encoding)";
 #endif
@@ -108,5 +108,7 @@ namespace bml::detail {
   std::ostream &operator<<(std::ostream &os, const PrintView<std::u8string> &view) {
     return printUtf8String(os, view.value);
   }
+
+  std::ostream &operator<<(std::ostream &os, const PrintView<std::monostate> &) { return os << "(empty)"; }
 
 } // namespace bml::detail

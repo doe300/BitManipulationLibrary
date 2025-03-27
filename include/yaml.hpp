@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace bml::yaml {
@@ -57,14 +58,19 @@ namespace bml::yaml {
     /**
      * Copies the options for the next indentation level.
      */
-    constexpr Options nextLevel(bool isSequence) const noexcept {
-      return Options{truncateSequenceLimit, depth + 1, isSequence, true, flags};
+    constexpr Options nextLevel(bool isSequence = false) const noexcept {
+      return Options{truncateSequenceLimit, depth + 1, isSequence, !isSequence, flags};
     }
 
     /**
-     * Returns the prefix string to be added for the current indentation level.
+     * Returns the prefix string to be added for the next entries in the current indentation level.
      */
     std::string indentation(bool firstMember) const;
+
+    /**
+     * Returns the prefix string to be added for the next entries in the current indentation level within a list.
+     */
+    std::string sequenceIndentation() const;
 
     constexpr bool hasFlags(PrintFlags flag) const noexcept {
       return (static_cast<std::underlying_type_t<PrintFlags>>(flags) &
@@ -167,6 +173,7 @@ namespace bml::yaml {
 
   } // namespace concepts
 
+  std::ostream &print(std::ostream &os, const Options &options, std::monostate);
   std::ostream &print(std::ostream &os, const Options &options, std::byte val);
   std::ostream &print(std::ostream &os, const Options &options, bool val);
   std::ostream &print(std::ostream &os, const Options &options, uintmax_t val);
@@ -219,6 +226,11 @@ namespace bml::yaml {
     return os << "null";
   }
 
+  template <typename... T>
+  std::ostream &print(std::ostream &os, const Options &options, const std::variant<T...> &val) {
+    return std::visit([&](const auto &val) -> std::ostream & { return print(os, options, val); }, val);
+  }
+
   template <typename T>
   std::ostream &print(std::ostream &os, const Options &options, std::span<const T> val)
     requires(SimpleListMember<T>)
@@ -246,6 +258,7 @@ namespace bml::yaml {
       return os << (options.prefixSpace ? " []" : "[]");
     }
     for (const auto &elem : val) {
+      os << options.nextLevel().sequenceIndentation();
       print(os, options.nextLevel(true /* sequence */), elem);
     }
     return os;
@@ -319,7 +332,7 @@ namespace bml::yaml {
     void printMember(std::ostream &os, const Options &options, bool firstMember, std::string_view name, T &&last) {
       if (!HideEmpty<std::decay_t<T>>{}(options, last) && !HideDefault<std::decay_t<T>>{}(options, last)) {
         os << options.indentation(firstMember) << name << ':';
-        bml::yaml::print(os, options.nextLevel(false /* no sequence */), std::forward<T>(last));
+        bml::yaml::print(os, options.nextLevel(), std::forward<T>(last));
       }
     }
 
@@ -333,7 +346,7 @@ namespace bml::yaml {
         nextIsFirstMember = firstMember;
       } else {
         os << options.indentation(firstMember) << names.substr(0, nameLength) << ':';
-        bml::yaml::print(os, options.nextLevel(false /* no sequence */), std::forward<T>(head));
+        bml::yaml::print(os, options.nextLevel(), std::forward<T>(head));
       }
       printMember(os, options, nextIsFirstMember, names.substr(nameEnd + 2), std::forward<Tail>(tail)...);
     }

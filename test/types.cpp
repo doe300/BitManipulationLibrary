@@ -778,48 +778,57 @@ public:
     using TrivialLargeVariant = std::variant<uint32_t, LargeEnum>;
     using PodVariant = std::variant<POD, uint32_t, EnumType>;
     using MemberVariant = std::variant<Member, uint32_t, EnumType>;
+    using EmptyVariant = std::variant<std::monostate, uint32_t>;
 
     const std::vector<std::byte> TRIVIAL_DATA{std::byte{17}};
     const auto LARGE_DATA = toBytes({0x00, 0x01, 0xC9, 0x7E});
     const auto POD_DATA = toBytes({0x00, 0x00, 0x00, 0x0D, 0x00, 0x00, 0x00, 0x0E, 0x37});
     const auto MEMBER_DATA = toBytes({0x11, 0x00, 0x16, 0x2D});
+    const std::vector<std::byte> EMPTY_DATA{};
 
     const TrivialVariant TRIVIAL{EnumType::BAR};
     const TrivialLargeVariant LARGE{117118U};
     const PodVariant PODV{POD{13, 14, '7'}};
     const MemberVariant MEMBER{Member{17, 22, 45}};
+    const EmptyVariant EMPTY{};
 
     static_assert(!Readable<TrivialVariant>);
     static_assert(!Readable<TrivialLargeVariant>);
     static_assert(!Readable<PodVariant>);
     static_assert(!Readable<MemberVariant>);
+    static_assert(!Readable<EmptyVariant>);
 
     checkWrite(TRIVIAL, TRIVIAL_DATA, 1_bytes);
     checkWrite(LARGE, LARGE_DATA, 4_bytes);
     checkWrite(PODV, POD_DATA, 9_bytes);
     checkWrite(MEMBER, MEMBER_DATA, 4_bytes);
+    checkWrite(EMPTY, EMPTY_DATA, 0_bytes);
 
     static_assert(!Skipable<TrivialVariant>);
     // skipable without knowing the active member, since all members are equal sized
     checkSkip<TrivialLargeVariant>(LARGE_DATA, 4_bytes);
     static_assert(!Skipable<PodVariant>);
     static_assert(!Skipable<MemberVariant>);
+    static_assert(!Skipable<EmptyVariant>);
 
     static_assert(!Copyable<TrivialVariant>);
     // copyable without knowing the active member, since all members are equal sized
     checkCopy<TrivialLargeVariant>(LARGE_DATA, 4_bytes);
     static_assert(!Copyable<PodVariant>);
     static_assert(!Copyable<MemberVariant>);
+    static_assert(!Copyable<EmptyVariant>);
 
     checkPrint(TRIVIAL, "17");
     checkPrint(LARGE, "117118");
     checkPrint(PODV, "POD{a = 13, foo = 14, c = 7}");
     checkPrint(MEMBER, "{17, 22, 45}");
+    checkPrint(EMPTY, "(empty)");
 
     checkSize(TRIVIAL, 1_bytes, false);
     checkSize(LARGE, 4_bytes, true);
     checkSize(PODV, 9_bytes, false);
     checkSize(MEMBER, 4_bytes, false);
+    checkSize(EMPTY, 0_bits, false);
   }
 
   void testRawBytes() {
