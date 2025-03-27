@@ -396,6 +396,7 @@ public:
     TEST_ADD(TestYAML::testCollections);
     TEST_ADD(TestYAML::testVariants);
     TEST_ADD(TestYAML::testComplex);
+    TEST_ADD(TestYAML::testDataRange);
   }
 
   void testSimple() {
@@ -491,6 +492,22 @@ additional:
   - a: 1
     b: 3
     c: -3)");
+  }
+
+  void testDataRange() {
+    DataRange range{ByteRange{13_bytes, 7_bytes}};
+    TEST_ASSERT_EQUALS(DataRange::Mode::KNOWN, range.mode());
+    checkPrint(range, "offset: 13\nsize: 7");
+
+    range = toBytes({0xDE, 0xAD, 0xBE, 0xEF});
+    TEST_ASSERT_EQUALS(DataRange::Mode::OWNED, range.mode());
+    checkPrint(range, "[0xde, 0xad, 0xbe, 0xef, ]");
+
+    const auto DATA = toBytes({0xDE, 0xAD, 0xBE, 0xEF, 0xC0, 0xFF, 0xEE, 0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF,
+                               0xDE, 0xAD, 0xBE, 0xEF});
+    range = std::span{DATA};
+    TEST_ASSERT_EQUALS(DataRange::Mode::BORROWED, range.mode());
+    checkPrint(range, "(19 entries)");
   }
 
 private:

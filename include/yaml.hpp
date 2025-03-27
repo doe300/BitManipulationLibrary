@@ -355,6 +355,7 @@ namespace bml::yaml {
 
 namespace bml {
   struct ByteRange;
+  class DataRange;
 } // namespace bml
 
 namespace bml::yaml {
@@ -362,5 +363,11 @@ namespace bml::yaml {
   struct YAMLTraits<bml::ByteRange> {
     static std::ostream &print(std::ostream &os, const Options &options, const bml::ByteRange &val);
     static bool isEmpty(const bml::ByteRange &val);
+  };
+
+  template <>
+  struct YAMLTraits<bml::DataRange> {
+    static std::ostream &print(std::ostream &os, const Options &options, const bml::DataRange &val);
+    static bool isEmpty(const bml::DataRange &val);
   };
 } // namespace bml::yaml

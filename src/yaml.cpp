@@ -91,4 +91,14 @@ namespace bml::yaml {
 
   bool YAMLTraits<bml::ByteRange>::isEmpty(const bml::ByteRange &val) { return !val; }
 
+  std::ostream &YAMLTraits<bml::DataRange>::print(std::ostream &os, const Options &options, const bml::DataRange &val) {
+    if (auto range = val.byteRange()) {
+      return yaml::print(os, options, range);
+    } else {
+      return yaml::print(os, options, val.data());
+    }
+  }
+
+  bool YAMLTraits<bml::DataRange>::isEmpty(const bml::DataRange &val) { return val.empty(); }
+
 } // namespace bml::yaml
