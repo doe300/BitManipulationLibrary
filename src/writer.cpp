@@ -22,7 +22,7 @@ namespace bml {
     BitCount position() const noexcept { return sinkBytesWritten + cacheSize; }
 
     void write(std::uintmax_t value, BitCount numBits) {
-      if ((numBits + cacheSize) > CACHE_SIZE) {
+      if ((numBits + cacheSize) > CACHE_SIZE) [[unlikely]] {
         // split up the bits to write into multiple calls
         auto upper = value >> (CACHE_SIZE / 2u);
         write(upper, numBits - CACHE_SIZE / 2u);
@@ -37,10 +37,10 @@ namespace bml {
 
     void writeBytes(std::span<const std::byte> bytes) {
       flushFullBytes();
-      if (cacheSize) {
+      if (cacheSize) [[unlikely]] {
         throw std::invalid_argument("Output bit stream is not properly aligned");
       }
-      if (!sinkBytes(bytes)) {
+      if (!sinkBytes(bytes)) [[unlikely]] {
         throw EndOfStreamError("Cannot write more bytes, end of output reached");
       }
       sinkBytesWritten += ByteCount{bytes.size()};
@@ -48,10 +48,10 @@ namespace bml {
 
     void fillBytes(std::byte value, ByteCount numBytes) {
       flushFullBytes();
-      if (cacheSize) {
+      if (cacheSize) [[unlikely]] {
         throw std::invalid_argument("Output bit stream is not properly aligned");
       }
-      if (!sinkCopies(value, numBytes)) {
+      if (!sinkCopies(value, numBytes)) [[unlikely]] {
         throw EndOfStreamError("Cannot write more bytes, end of output reached");
       }
       sinkBytesWritten += numBytes;
@@ -61,7 +61,7 @@ namespace bml {
       Cache tmp{cache, cacheSize};
       sinkBytesWritten += flushFullCacheBytes(
           tmp, [this](std::byte nextByte) { return sinkByte(nextByte); },
-          []() { throw EndOfStreamError("Cannot write more bytes, end of output reached"); });
+          +[]() { throw EndOfStreamError("Cannot write more bytes, end of output reached"); });
       cache = tmp.value;
       cacheSize = tmp.size;
     }
@@ -181,14 +181,14 @@ namespace bml {
   }
 
   static BitWriter::WriterImpl &assertImpl(std::unique_ptr<BitWriter::WriterImpl> &ptr) noexcept(false) {
-    if (ptr) {
+    if (ptr) [[likely]] {
       return *ptr;
     }
     throw std::runtime_error{"Cannot write to empty BitWriter instance"};
   }
 
   void BitWriter::assertAlignment(BitCount bitAlignment) {
-    if (assertImpl(impl).position() % bitAlignment) {
+    if (assertImpl(impl).position() % bitAlignment) [[unlikely]] {
       throw std::invalid_argument("Output bit stream is not properly aligned");
     }
   }

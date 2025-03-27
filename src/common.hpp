@@ -20,7 +20,8 @@ namespace bml {
   };
 
   template <typename ByteProducer = bool (*)(std::byte &), typename ErrorHandler = void (*)()>
-  constexpr ByteCount fillCache(Cache &cache, BitCount numBits, ByteProducer produceNextByte, ErrorHandler handleEos) {
+  constexpr ByteCount fillCache(Cache &cache, BitCount numBits, ByteProducer &&produceNextByte,
+                                ErrorHandler &&handleEos) {
     auto bytesRead = 0_bytes;
     if (numBits > CACHE_SIZE) [[unlikely]] {
       throw std::out_of_range("Cannot read more bits than fit into uintmax_t");
@@ -28,7 +29,7 @@ namespace bml {
 
     while (cache.size < numBits) {
       std::byte nextByte{};
-      if (!produceNextByte(nextByte)) {
+      if (!produceNextByte(nextByte)) [[unlikely]] {
         handleEos();
         break;
       }
@@ -41,12 +42,12 @@ namespace bml {
     return bytesRead;
   }
 
-  constexpr std::uintmax_t readFromCache(Cache &cache, BitCount numBits) {
+  constexpr std::uintmax_t readFromCache(Cache &cache, BitCount numBits) noexcept {
     if (!numBits) {
       return 0;
     }
     auto result = (cache.value >> (CACHE_SIZE - numBits)) & numBits.mask();
-    if (numBits == CACHE_SIZE) {
+    if (numBits == CACHE_SIZE) [[unlikely]] {
       cache.size = 0_bits;
       cache.value = 0;
     } else {
@@ -64,7 +65,7 @@ namespace bml {
       auto byte = static_cast<std::byte>(cache.value >> (CACHE_SIZE - 1_bytes));
       cache.value <<= 1_bytes;
       cache.size -= 1_bytes;
-      if (!consumeNextByte(byte)) {
+      if (!consumeNextByte(byte)) [[unlikely]] {
         handleEos();
         break;
       }

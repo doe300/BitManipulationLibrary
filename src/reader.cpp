@@ -60,16 +60,59 @@ namespace bml {
       return bits;
     }
 
+    std::byte readByte() {
+      if (cacheSize) {
+        // If we have something cached, read from cache
+        return static_cast<std::byte>(read(1_bytes));
+      }
+      // Otherwise directly read next byte from source
+      std::byte byte{};
+      if (!extractSourceByte(byte)) [[unlikely]] {
+        throwOnEndOfStream();
+      }
+      ++sourceBytesRead;
+      return byte;
+    }
+
     void readBytesInto(std::span<std::byte> outBytes) {
-      while (cacheSize) {
+      while (cacheSize && !outBytes.empty()) {
         outBytes[0] = static_cast<std::byte>(read(1_bytes));
         outBytes = outBytes.subspan<1>();
       }
-      if (!extractSourceBytes(outBytes)) {
-        throw EndOfStreamError("Cannot read more bytes, end of input reached");
-      } else {
+      if (extractSourceBytes(outBytes)) [[likely]] {
         sourceBytesRead += outBytes.size() * 1_bytes;
+      } else {
+        throwOnEndOfStream();
       }
+    }
+
+    ByteCount readBytesUntil(std::span<const std::byte> pattern, std::vector<std::byte> *result) {
+      if (!hasMoreBytes() || pattern.empty()) [[unlikely]] {
+        return {};
+      }
+
+      auto numBytes = 0_bytes;
+      // 1. empty cache until we are sure source does not start with pattern
+      auto number = toNumber(pattern);
+      ByteCount patternSize{pattern.size()};
+      while (cacheSize) {
+        Cache tmp{cache, cacheSize};
+        if (static_cast<std::byte>(readFromCache(tmp, 1_bytes)) == pattern.front() && peek(patternSize) == number) {
+          // the first check is to guard to not always fill in the cache with peek(), otherwise it never gets empty
+          return numBytes;
+        } else [[likely]] {
+          // reads 1 byte from cache
+          auto b = readByte();
+          ++numBytes;
+          if (result) {
+            result->push_back(b);
+          }
+        }
+      }
+      // 2. read remainder directly from the underlying source
+      auto additionalBytes = extractSourceBytesUntil(pattern, result);
+      sourceBytesRead += additionalBytes;
+      return numBytes + additionalBytes;
     }
 
     void skip(BitCount numBits) {
@@ -84,7 +127,7 @@ namespace bml {
 
       // 2. Skip any remaining full bytes directly in source
       if (auto numBytes = ByteCount{(numBits - numBitsSkipped) / 1_bytes}) {
-        if (!skipSourceBytes(numBytes)) {
+        if (!skipSourceBytes(numBytes)) [[unlikely]] {
           throw EndOfStreamError("Cannot skip more bytes, end of input reached");
         }
         numBitsSkipped += numBytes;
@@ -151,18 +194,90 @@ namespace bml {
       Cache tmp{cache, cacheSize};
       sourceBytesRead += fillCache(
           tmp, numBits, [this](std::byte &nextByte) { return extractSourceByte(nextByte); },
-          [throwOnEos]() {
-            if (throwOnEos) {
-              throw EndOfStreamError("Cannot read more bytes, end of input reached");
-            }
-          });
+          throwOnEos ? throwOnEndOfStream : throwNoError);
       cache = tmp.value;
       cacheSize = tmp.size;
     }
 
     [[nodiscard]] virtual bool extractSourceByte(std::byte &out) { return extractSourceBytes(std::span{&out, 1}); }
     [[nodiscard]] virtual bool extractSourceBytes(std::span<std::byte> outBytes) = 0;
+
+    virtual ByteCount extractSourceBytesUntil(std::span<const std::byte> pattern, std::vector<std::byte> *result) {
+      auto numBytes = 0_bytes;
+      std::vector<std::byte> candidate{};
+      candidate.reserve(pattern.size());
+      std::byte byte{};
+      while (extractSourceByte(byte)) [[likely]] {
+        if (candidate.empty() && byte != pattern.front()) [[likely]] {
+          ++numBytes;
+          if (result) {
+            result->push_back(byte);
+          }
+          continue;
+        }
+        // might be the part of the pattern
+        candidate.push_back(byte);
+        if (std::equal(candidate.begin(), candidate.end(), pattern.begin())) {
+          // candidate still matches so far
+          if (candidate.size() == pattern.size()) {
+            // pattern found, add to cache and return
+            auto tmp = setCache(candidate);
+            cache = tmp.value;
+            cacheSize = tmp.size;
+            sourceBytesRead += ByteCount{candidate.size()};
+            candidate.clear();
+            break;
+          }
+          continue;
+        }
+        // candidate does not match anymore
+        // move from the front to the result until the candidate is either empty or matches again (partially)
+        auto it = candidate.begin();
+        do {
+          ++numBytes;
+          if (result) {
+            result->push_back(*it);
+          }
+          ++it;
+        } while (it != candidate.end() && !std::equal(it, candidate.end(), pattern.begin()));
+        candidate.erase(candidate.begin(), it);
+      }
+      // end of stream, add remaining
+      numBytes += ByteCount{candidate.size()};
+      if (result) {
+        result->insert(result->end(), candidate.begin(), candidate.end());
+      }
+      return numBytes;
+    }
+
     [[nodiscard]] virtual bool skipSourceBytes(ByteCount numBytes) = 0;
+
+  private:
+    static void throwNoError() noexcept {}
+    [[noreturn]] static void throwOnEndOfStream() {
+      throw EndOfStreamError("Cannot read more bytes, end of input reached");
+    }
+
+    static uintmax_t toNumber(std::span<const std::byte> pattern) {
+      auto cache = setCache(pattern);
+      return readFromCache(cache, ByteCount{pattern.size()});
+    }
+
+    static Cache setCache(std::span<const std::byte> bytes) {
+      Cache cache{};
+      fillCache(
+          cache, ByteCount{bytes.size()},
+          [bytes](std::byte &out) mutable {
+            if (bytes.empty()) {
+              return false;
+            }
+            out = bytes[0];
+            bytes = bytes.subspan<1>();
+            return true;
+          },
+          +[]() {});
+      return cache;
+    }
 
   private:
     ByteCount sourceBytesRead;
@@ -208,6 +323,16 @@ namespace bml {
       std::copy_n(sourceRange.begin(), outBytes.size(), outBytes.begin());
       sourceRange = sourceRange.subspan(outBytes.size());
       return true;
+    }
+
+    ByteCount extractSourceBytesUntil(std::span<const std::byte> pattern, std::vector<std::byte> *result) override {
+      auto end = std::search(sourceRange.begin(), sourceRange.end(), pattern.begin(), pattern.end());
+      auto numBytes = ByteCount{static_cast<std::size_t>(std::distance(sourceRange.begin(), end))};
+      if (result) {
+        result->insert(result->end(), sourceRange.begin(), end);
+      }
+      sourceRange = BitReader::ByteRange{end, sourceRange.end()};
+      return numBytes;
     }
 
     bool skipSourceBytes(ByteCount numBytes) override {
@@ -260,13 +385,24 @@ namespace bml {
     return *this;
   }
 
+  static BitReader::ReaderImpl &assertImpl(std::unique_ptr<BitReader::ReaderImpl> &ptr) noexcept(false) {
+    if (ptr) [[likely]] {
+      return *ptr;
+    }
+    throw std::runtime_error{"Cannot read from empty BitReader instance"};
+  }
+
   BitCount BitReader::position() const noexcept { return impl ? impl->position() : 0_bits; }
   bool BitReader::hasMoreBytes() noexcept { return impl ? impl->hasMoreBytes() : false; }
 
   BitCount BitReader::skipToAligment(BitCount bitAlignment) {
-    auto numBits = position() % bitAlignment ? (bitAlignment - position() % bitAlignment) : 0_bits;
-    skip(numBits);
-    return numBits;
+    auto pos = assertImpl(impl).position();
+    if (pos % bitAlignment) {
+      auto numBits = bitAlignment - position() % bitAlignment;
+      skip(numBits);
+      return numBits;
+    }
+    return 0_bits;
   }
 
   void BitReader::assertAlignment(BitCount bitAlignment) {
@@ -275,26 +411,46 @@ namespace bml {
     }
   }
 
-  static BitReader::ReaderImpl &assertImpl(std::unique_ptr<BitReader::ReaderImpl> &ptr) noexcept(false) {
-    if (ptr) {
-      return *ptr;
-    }
-    throw std::runtime_error{"Cannot read from empty BitReader instance"};
-  }
-
   bool BitReader::read() { return assertImpl(impl).read(); }
 
-  std::optional<std::uintmax_t> BitReader::peek(BitCount numBits) { return assertImpl(impl).peek(numBits); }
-  std::uintmax_t BitReader::read(BitCount numBits) { return assertImpl(impl).read(numBits); }
+  std::optional<std::uintmax_t> BitReader::peek(BitCount numBits) {
+    if (!numBits && impl) [[unlikely]] {
+      return 0U;
+    }
+    return assertImpl(impl).peek(numBits);
+  }
+
+  std::uintmax_t BitReader::read(BitCount numBits) {
+    if (!numBits && impl) [[unlikely]] {
+      return 0U;
+    }
+    return assertImpl(impl).read(numBits);
+  }
 
   std::uintmax_t BitReader::readBytes(ByteCount numBytes) {
     assertAlignment(BYTE_SIZE);
+    if (numBytes == 1_bytes) {
+      return static_cast<std::uintmax_t>(assertImpl(impl).readByte());
+    }
     return read(numBytes);
   }
 
+  std::byte BitReader::readByte() { return assertImpl(impl).readByte(); }
+
   void BitReader::readBytesInto(std::span<std::byte> outBytes) {
+    if (outBytes.empty() && impl) [[unlikely]] {
+      return;
+    }
+
     assertAlignment(BYTE_SIZE);
     assertImpl(impl).readBytesInto(outBytes);
+  }
+
+  std::vector<std::byte> BitReader::readBytesUntil(std::span<const std::byte> pattern) {
+    assertAlignment(BYTE_SIZE);
+    std::vector<std::byte> result{};
+    assertImpl(impl).readBytesUntil(pattern, &result);
+    return result;
   }
 
   std::uintmax_t BitReader::readExpGolomb() {
@@ -324,7 +480,7 @@ namespace bml {
       codePoint |= (read<uint32_t>(1_bytes) & 0x3FU) << 12U;
       codePoint |= (read<uint32_t>(1_bytes) & 0x3FU) << 6U;
       return codePoint | (read<uint32_t>(1_bytes) & 0x3FU);
-    } else if (b && (*b & 0xC0U) == 0x80U) {
+    } else if (b && (*b & 0xC0U) == 0x80U) [[unlikely]] {
       // start within the previous UTF-8 character, cannot decode, so skip remainder
       while ((b = peek(1_bytes)) && (*b & 0xC0U) == 0x80U) {
         readByte();
@@ -341,7 +497,7 @@ namespace bml {
     } else if (b && (*b & 0xDC00U) == 0xD800U) {
       const uint32_t codePoint = (read<uint32_t>(2_bytes) & 0x3FFU) << 10U;
       return 0x10000U | codePoint | (read<uint32_t>(2_bytes) & 0x3FFU);
-    } else if (b && (*b & 0xDC00U) == 0xDC00U) {
+    } else if (b && (*b & 0xDC00U) == 0xDC00U) [[unlikely]] {
       // start within the previous UTF-16 character, cannot decode, so skip remainder
       while ((b = peek(2_bytes)) && (*b & 0xDC00U) == 0xDC00U) {
         read(2_bytes);
@@ -361,6 +517,16 @@ namespace bml {
     return decodeNegaFibonacci(invertBits(value, numBits));
   }
 
-  void BitReader::skip(BitCount numBits) { assertImpl(impl).skip(numBits); }
+  void BitReader::skip(BitCount numBits) {
+    if (!numBits && impl) [[unlikely]] {
+      return;
+    }
+    assertImpl(impl).skip(numBits);
+  }
+
+  ByteCount BitReader::skipBytesUntil(std::span<const std::byte> pattern) {
+    assertAlignment(BYTE_SIZE);
+    return assertImpl(impl).readBytesUntil(pattern, nullptr);
+  }
 
 } // namespace bml

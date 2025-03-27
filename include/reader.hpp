@@ -115,7 +115,7 @@ namespace bml {
      *
      * Throws an exception if the read position is not byte aligned, see assertAlignment().
      */
-    std::byte readByte() { return static_cast<std::byte>(readBytes(1_bytes)); }
+    std::byte readByte();
 
     template <typename T>
     T readBytes(ByteCount numBytes)
@@ -130,6 +130,15 @@ namespace bml {
      * Throws an exception if the read position is not byte aligned, see assertAlignment().
      */
     void readBytesInto(std::span<std::byte> outBytes);
+
+    /**
+     * Reads all bytes until the given pattern is found or the end of the input is reached.
+     *
+     * The given pattern itself is NOT read, i.e. successive reads will start with this pattern.
+     *
+     * Throws an exception if the read position is not byte aligned, see assertAlignment().
+     */
+    std::vector<std::byte> readBytesUntil(std::span<const std::byte> pattern);
 
     /**
      * Reads an unsigned Exponential-Golomb encoded value and returns the underlying decoded value.
@@ -197,6 +206,15 @@ namespace bml {
      * Skips the given number of bits for reading, incrementing the current read position by the given number of bits.
      */
     void skip(BitCount numBits);
+
+    /**
+     * Skips all bytes until the given pattern is found or the end of the input is reached.
+     *
+     * The given pattern itself is NOT read, i.e. successive reads will start with this pattern.
+     *
+     * Throws an exception if the read position is not byte aligned, see assertAlignment().
+     */
+    ByteCount skipBytesUntil(std::span<const std::byte> pattern);
 
   private:
     std::unique_ptr<ReaderImpl> impl;
