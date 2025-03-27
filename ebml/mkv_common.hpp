@@ -67,29 +67,24 @@ namespace bml::ebml::mkv {
      */
     struct BaseBlockElement : MasterElement {
       /**
-       * The block header data,
+       * The block header data.
        */
       BlockHeader header;
 
       /**
-       * Ranges of the contained frame data relative to the start of the read byte source.
+       * Ranges of the contained frame data.
        *
-       * NOTE: This value is informational only and not written! On changes, the #frameData member needs to be
-       * modified instead.
-       */
-      std::vector<ByteRange> frameDataRanges;
-
-      /**
-       * The actual data bytes of contained frames in this Block Element.
+       * NOTE: If the frame data ranges are BORROWED, the underlying in-memory raw bytes need to remain valid as long as
+       * these frame data ranges are accessed.
        *
-       * This member is only filled if the ReadOptions#readMediaData is set on reading this Element.
-       * This member is requires for the Block Element to be able to be written back out.
+       * NOTE: This member can only be written back if the contained data ranges do directly reference their represented
+       * raw bytes (i.e. for BORROWED or OWNED data range modes).
        */
-      std::vector<std::byte> frameData;
+      std::vector<DataRange> frameDataRanges;
 
       constexpr auto operator<=>(const BaseBlockElement &) const noexcept = default;
 
-      BML_DEFINE_PRINT(BaseBlockElement, crc32, header, frameDataRanges, frameData, voidElements)
+      BML_DEFINE_PRINT(BaseBlockElement, crc32, header, frameDataRanges, voidElements)
       std::ostream &printYAML(std::ostream &os, const bml::yaml::Options &options) const;
 
     protected:

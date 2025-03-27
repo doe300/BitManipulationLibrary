@@ -4,7 +4,6 @@
 #include "mkv_common.hpp"
 
 #include <functional>
-#include <istream>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -30,19 +29,15 @@ namespace bml::ebml::mkv {
     std::optional<TrackTimestamp<>> timestamp;
 
     /**
-     * Range of the Frame's data relative to the start of the read byte source.
-     */
-    ByteRange dataRange;
-
-    /**
-     * The actual data bytes of this Frame.
+     * The Frame's data.
      *
-     * This member is only filled if the underlying Block Element was read with data.
+     * Whether this data range directly references/holds the underlying raw bytes or just tracks their position relative
+     * to the start of the read byte source depends on whether the underlying Block Element was read with data.
      *
-     * NOTE: Since this directly references the underlying Block Element's data member, care needs to be taken to not
-     * access this member after freeing the underlying Block Element.
+     * NOTE: Since this mighty directly references the underlying Block Element's data member, care needs to be taken to
+     * not access this member after freeing the underlying Block Element.
      */
-    std::span<const std::byte> data;
+    DataRange data;
   };
 
   /**
@@ -106,109 +101,19 @@ namespace bml::ebml::mkv {
     TrackTimestamp<> startTime;
   };
 
-  namespace detail {
-    /**
-     * Pair of the Frame with its data span filled and a (possibly empty) vector owning the storage of the Frame's data.
-     */
-    using FilledFrame = std::pair<Frame, std::vector<std::byte>>;
-
-    FilledFrame fillFrame(Frame frame, std::span<const std::byte> data);
-    FilledFrame fillFrame(Frame frame, std::istream &input);
-  } // namespace detail
-
-  /**
-   * View for amending a Frame object read from the underlying input range with the Frame's data extracted from the
-   * associated data source.
-   *
-   * NOTE: The produced Frame's data might directly reference the underlying data source (i.e. for in-memory data
-   * buffers) and thus MUST NOT outlive the lifetime of the underlying data source.
-   */
-  template <std::ranges::input_range V, typename Source>
-    requires(std::is_same_v<Frame, typename std::ranges::range_value_t<V>>)
-  class FillFrameDataView : public std::ranges::view_interface<FillFrameDataView<V, Source>> {
-    using InnerIterator = std::ranges::iterator_t<V>;
-
-    struct Sentinel {
-      std::ranges::sentinel_t<V> inner;
-    };
-
-    class Iterator {
-    public:
-      using value_type = detail::FilledFrame;
-      using difference_type = std::ptrdiff_t;
-
-      explicit Iterator() noexcept = default;
-      Iterator(InnerIterator begin, Source source) noexcept : iterator(begin), dataSource(source) {}
-
-      Iterator &operator++() {
-        ++iterator;
-        return *this;
-      }
-
-      Iterator operator++(int) {
-        auto copy = *this;
-        ++iterator;
-        return copy;
-      }
-
-      value_type operator*() const { return detail::fillFrame(*iterator, dataSource); }
-
-      bool operator==(const Iterator &other) const noexcept { return iterator == other.iterator; }
-
-      friend bool operator==(const Sentinel &sentinel, const Iterator &it) noexcept {
-        return it.iterator == sentinel.inner;
-      }
-
-    private:
-      InnerIterator iterator;
-      Source dataSource;
-    };
-
-  public:
-    FillFrameDataView(V &&input, Source source) noexcept : inputRange(std::move(input)), dataSource(source) {}
-
-    Iterator begin() const { return Iterator{inputRange.begin(), dataSource}; }
-    Sentinel end() const { return Sentinel{inputRange.end()}; }
-
-  private:
-    V inputRange;
-    Source dataSource;
-  };
-
-  /**
-   * Range adaptor to produce a FillFrameDataView amending an input range using the additional Frame data source.
-   */
-  template <typename Source>
-  struct FillFrameData {
-    template <std::ranges::input_range V>
-      requires(std::is_same_v<Frame, typename std::ranges::range_value_t<V>>)
-    friend FillFrameDataView<V, Source> operator|(V &&range, const FillFrameData &view) noexcept {
-      return FillFrameDataView<V, Source>{std::move(range), view.dataSource};
-    }
-
-    /**
-     * Directly amend the given input frame with the Frame's data as provided by the associated data source.
-     *
-     * NOTE: The produced Frame's data might directly reference the underlying data source (i.e. for in-memory data
-     * buffers) and thus MUST NOT outlive the lifetime of the underlying data source.
-     */
-    detail::FilledFrame operator()(Frame frame) { return detail::fillFrame(std::move(frame), dataSource); }
-
-    Source dataSource;
-  };
-
   /**
    * Returns a range adaptor using the given in-memory buffer to amend the Frame's data.
    */
-  constexpr FillFrameData<std::span<const std::byte>> fillFrameData(std::span<const std::byte> allData) noexcept {
-    return FillFrameData<std::span<const std::byte>>{allData};
+  constexpr FillDataRange<Frame, std::span<const std::byte>>
+  fillFrameData(std::span<const std::byte> allData) noexcept {
+    return FillDataRange<Frame, std::span<const std::byte>>{allData, &Frame::data};
   }
 
   /**
    * Returns a range adaptor using the given seekable input stream buffer to amend the Frame's data.
    */
-  constexpr FillFrameData<std::reference_wrapper<std::istream>> fillFrameData(std::istream &input) noexcept {
-    return FillFrameData<std::reference_wrapper<std::istream>>{std::ref(input)};
+  constexpr FillDataRange<Frame, std::reference_wrapper<std::istream>> fillFrameData(std::istream &input) noexcept {
+    return FillDataRange<Frame, std::reference_wrapper<std::istream>>{std::ref(input), &Frame::data};
   }
 
 } // namespace bml::ebml::mkv

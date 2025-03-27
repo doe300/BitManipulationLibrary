@@ -71,22 +71,22 @@ namespace bml::ebml::mkv {
       auto dataSize = (endPos - reader.position()).divide<8>();
 
       auto blockDataOffset = bml::ebml::detail::getUnderlyingReader(reader).position().divide<8>();
-      if (options.readMediaData) {
-        frameData.resize(dataSize.num);
-        reader.readBytesInto(std::span{frameData});
-
-        BitReader tmpReader{std::span{frameData}};
-        frameDataRanges = readFrameRanges(tmpReader, header, {blockDataOffset, dataSize});
-      } else {
-        frameDataRanges = readFrameRanges(reader, header, {blockDataOffset, dataSize});
-        reader.skip(endPos - reader.position());
-      }
+      frameDataRanges = readFrameRanges(reader, header, {blockDataOffset, dataSize}, options.readMediaData);
+      reader.skip(endPos - reader.position());
     }
 
     void BaseBlockElement::writeValue(BitWriter &writer, ElementId id) const {
-      ebml::detail::writeElementHeader(writer, id, header.numBits() + ByteCount{frameData.size()});
-      header.write(writer);
-      writer.writeBytes(frameData);
+      auto estimatedSize =
+          std::accumulate(frameDataRanges.begin(), frameDataRanges.end(), header.numBits(),
+                          [](ByteCount sum, const DataRange &range) { return sum + range.numBytes(); });
+
+      writeElement(
+          writer, id,
+          [this](BitWriter &w) {
+            header.write(w);
+            writeFrameRanges(w, frameDataRanges, header.lacing);
+          },
+          estimatedSize.num);
     }
 
     std::ostream &BaseBlockElement::printYAML(std::ostream &os, const bml::yaml::Options &options) const {
@@ -171,7 +171,7 @@ namespace bml::ebml::mkv {
   std::ostream &operator<<(std::ostream &os, const Cluster &cluster) {
     static const auto addBlockSizes = [](ByteCount size, const SimpleBlock &block) {
       return size + std::accumulate(block.frameDataRanges.begin(), block.frameDataRanges.end(), 0_bytes,
-                                    [](ByteCount sum, const ByteRange &range) { return sum + range.size; });
+                                    [](ByteCount sum, const DataRange &range) { return sum + range.numBytes(); });
     };
 
     os << "Cluster{";
@@ -193,7 +193,6 @@ namespace bml::ebml::mkv {
   void Matroska::read(BitReader &reader, const ReadOptions &options) {
     header.read(reader, options);
     segment.read(reader, options);
-    hasData = options.readMediaData;
   }
 
   ChunkedReader Matroska::readChunked(bml::BitReader &reader, ReadOptions options) & {

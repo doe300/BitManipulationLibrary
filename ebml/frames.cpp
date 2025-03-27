@@ -13,9 +13,9 @@ namespace bml::ebml::mkv {
   static_assert(!std::ranges::borrowed_range<FrameView>);
   static_assert(std::ranges::view<FrameView>);
 
-  static_assert(std::ranges::input_range<FillFrameDataView<FrameView, std::reference_wrapper<std::istream>>>);
-  static_assert(!std::ranges::borrowed_range<FillFrameDataView<FrameView, std::reference_wrapper<std::istream>>>);
-  static_assert(std::ranges::view<FillFrameDataView<FrameView, std::reference_wrapper<std::istream>>>);
+  static_assert(std::ranges::input_range<FillDataRangeView<FrameView, std::reference_wrapper<std::istream>>>);
+  static_assert(!std::ranges::borrowed_range<FillDataRangeView<FrameView, std::reference_wrapper<std::istream>>>);
+  static_assert(std::ranges::view<FillDataRangeView<FrameView, std::reference_wrapper<std::istream>>>);
 
   static void advanceToNextBlockForTrack(std::span<const Cluster> &clusters,
                                          detail::BaseBlockElement const *&currentBlock, uint32_t trackNumber) noexcept;
@@ -50,14 +50,8 @@ namespace bml::ebml::mkv {
       timestamp = getBlockTimestamp(pendingClusters.front(), *currentBlock, timescale);
     }
 
-    auto range = currentBlock->frameDataRanges.at(currentLaceIndex);
-    std::span<const std::byte> data{};
-    if (!currentBlock->frameData.empty()) {
-      auto offset = range.offset - currentBlock->frameDataRanges.front().offset;
-      data = std::span{currentBlock->frameData}.subspan(offset.num, range.size.num);
-    }
-
-    return {timestamp, range, data};
+    auto range = currentBlock->frameDataRanges.at(currentLaceIndex).borrow();
+    return {timestamp, range};
   }
 
   bool FrameView::Iterator::operator==(const Iterator &other) const noexcept {
@@ -72,29 +66,40 @@ namespace bml::ebml::mkv {
     }
   }
 
-  static std::vector<ByteRange> readFixedSizeFrameRanges(std::size_t numFrames, const ByteRange &dataRange) {
+  static DataRange readDataRange(BitReader &reader, ByteRange range, bool copyFrameData) {
+    if (copyFrameData) {
+      std::vector<std::byte> tmp(range.size.num);
+      reader.readBytesInto(tmp);
+      return tmp;
+    }
+    reader.skip(range.size);
+    return range;
+  }
+
+  static std::vector<DataRange> readFixedSizeFrameRanges(BitReader &reader, std::size_t numFrames,
+                                                         const ByteRange &dataRange, bool copyFrameData) {
     auto frameSize = dataRange.size / numFrames;
-    std::vector<ByteRange> frames{};
+    std::vector<DataRange> frames{};
     frames.reserve(numFrames);
     for (std::size_t i = 0; i < numFrames; ++i) {
-      frames.push_back(dataRange.subRange(i * frameSize, frameSize));
+      frames.push_back(readDataRange(reader, dataRange.subRange(i * frameSize, frameSize), copyFrameData));
     }
     return frames;
   }
 
-  static std::vector<ByteRange> extractFrameRanges(const std::vector<std::size_t> &frameSizesMinus1,
-                                                   ByteRange dataRange) {
-    std::vector<ByteRange> frames{};
+  static std::vector<DataRange> extractFrameRanges(BitReader &reader, const std::vector<std::size_t> &frameSizesMinus1,
+                                                   ByteRange dataRange, bool copyFrameData) {
+    std::vector<DataRange> frames{};
     frames.reserve(frameSizesMinus1.size() + 1U);
     for (auto size : frameSizesMinus1) {
-      frames.push_back(dataRange.subRange(0_bytes, ByteCount{size}));
+      frames.push_back(readDataRange(reader, dataRange.subRange(0_bytes, ByteCount{size}), copyFrameData));
       dataRange = dataRange.subRange(ByteCount{size});
     }
-    frames.push_back(dataRange);
+    frames.push_back(readDataRange(reader, dataRange, copyFrameData));
     return frames;
   }
 
-  static std::vector<ByteRange> readEBMLFrameRanges(BitReader &reader, const ByteRange &dataRange) {
+  static std::vector<DataRange> readEBMLFrameRanges(BitReader &reader, const ByteRange &dataRange, bool copyFrameData) {
     auto start = reader.position();
     auto numFramesMinus1 = reader.readBytes<uint8_t>(1_bytes);
 
@@ -114,7 +119,7 @@ namespace bml::ebml::mkv {
     }
 
     auto remainingRange = dataRange.subRange((reader.position() - start).divide<8>());
-    return extractFrameRanges(frameSizesMinus1, remainingRange);
+    return extractFrameRanges(reader, frameSizesMinus1, remainingRange, copyFrameData);
   }
 
   static std::size_t readXiphSize(BitReader &reader) {
@@ -130,7 +135,7 @@ namespace bml::ebml::mkv {
     return value;
   }
 
-  static std::vector<ByteRange> readXiphFrameRanges(BitReader &reader, const ByteRange &dataRange) {
+  static std::vector<DataRange> readXiphFrameRanges(BitReader &reader, const ByteRange &dataRange, bool copyFrameData) {
     auto start = reader.position();
     auto numFramesMinus1 = reader.readBytes<uint8_t>(1_bytes);
 
@@ -141,21 +146,62 @@ namespace bml::ebml::mkv {
     }
 
     auto remainingRange = dataRange.subRange((reader.position() - start).divide<8>());
-    return extractFrameRanges(frameSizesMinus1, remainingRange);
+    return extractFrameRanges(reader, frameSizesMinus1, remainingRange, copyFrameData);
   }
 
-  std::vector<ByteRange> readFrameRanges(BitReader &reader, const BlockHeader &header, const ByteRange &dataRange) {
+  std::vector<DataRange> readFrameRanges(BitReader &reader, const BlockHeader &header, const ByteRange &dataRange,
+                                         bool copyFrameData) {
     switch (header.lacing) {
     case BlockHeader::Lacing::NONE:
-      return readFixedSizeFrameRanges(1U, dataRange);
+      return readFixedSizeFrameRanges(reader, 1U, dataRange, copyFrameData);
     case BlockHeader::Lacing::FIXED_SIZE:
-      return readFixedSizeFrameRanges(1U + reader.readBytes<uint8_t>(1_bytes), dataRange.subRange(1_bytes));
+      return readFixedSizeFrameRanges(reader, 1U + reader.readBytes<uint8_t>(1_bytes), dataRange.subRange(1_bytes),
+                                      copyFrameData);
     case BlockHeader::Lacing::EBML:
-      return readEBMLFrameRanges(reader, dataRange);
+      return readEBMLFrameRanges(reader, dataRange, copyFrameData);
     case BlockHeader::Lacing::XIPH:
-      return readXiphFrameRanges(reader, dataRange);
+      return readXiphFrameRanges(reader, dataRange, copyFrameData);
     }
     return {};
+  }
+
+  static void writeXiphSize(BitWriter &writer, std::size_t value) {
+    while (value > 255) {
+      writer.writeByte(std::byte{0xFF});
+      value -= 255U;
+    }
+    writer.writeBytes(value, 1_bytes);
+  }
+
+  void writeFrameRanges(BitWriter &writer, const std::vector<DataRange> &frameRanges, BlockHeader::Lacing lacing) {
+    if (!std::all_of(frameRanges.begin(), frameRanges.end(), [](const DataRange &range) { return range.hasData(); })) {
+      throw NoReferencedDataError{"Cannot write Frame without referenced data"};
+    }
+
+    if (lacing != BlockHeader::Lacing::NONE) {
+      writer.writeBytes(frameRanges.size() - 1U, 1_bytes);
+    }
+
+    if (lacing == BlockHeader::Lacing::EBML) {
+      VariableSizeInteger tmp{frameRanges.front().size()};
+      tmp.write(writer);
+      for (std::size_t i = 1; i < frameRanges.size() - 1U; ++i) {
+        auto difference =
+            static_cast<intmax_t>(frameRanges[i].size()) - static_cast<intmax_t>(frameRanges[i - 1U].size());
+        BitCount numBits{std::bit_ceil(static_cast<uintmax_t>(std::abs(difference)))};
+        numBits = ((numBits + 6_bits) / 7_bits) * 7_bits;
+        tmp.set(static_cast<uintmax_t>(difference + ((1LL << (numBits - 1_bits)) - 1)));
+        tmp.write(writer);
+      }
+    } else if (lacing == BlockHeader::Lacing::XIPH) {
+      for (std::size_t i = 0; i < frameRanges.size() - 1U; ++i) {
+        writeXiphSize(writer, frameRanges[i].size());
+      }
+    }
+
+    for (const auto &frame : frameRanges) {
+      writer.writeBytes(frame.data());
+    }
   }
 
   static const detail::BaseBlockElement *findNextBlock(std::span<const SimpleBlock> simpleBlocks,
@@ -169,14 +215,17 @@ namespace bml::ebml::mkv {
         [](const BlockGroup &group, int16_t offset) { return group.block.header.timestampOffset <= offset; });
 
     if (nextSimpleBlockIt != simpleBlocks.end() && nextSimpleBlockIt->header.trackNumber != trackNumber) {
-      nextSimpleBlockIt = std::find_if(nextSimpleBlockIt, simpleBlocks.end(), [trackNumber](const SimpleBlock &block) {
-        return block.header.trackNumber == trackNumber;
-      });
+      nextSimpleBlockIt =
+          std::find_if(nextSimpleBlockIt, simpleBlocks.end(), [trackNumber, timestampOffset](const SimpleBlock &block) {
+            return block.header.trackNumber == trackNumber && block.header.timestampOffset > timestampOffset;
+          });
     }
     if (nextBlockIt != blockGroups.end() && nextBlockIt->block.header.trackNumber != trackNumber) {
-      nextBlockIt = std::find_if(nextBlockIt, blockGroups.end(), [trackNumber](const BlockGroup &group) {
-        return group.block.header.trackNumber == trackNumber;
-      });
+      nextBlockIt =
+          std::find_if(nextBlockIt, blockGroups.end(), [trackNumber, timestampOffset](const BlockGroup &group) {
+            return group.block.header.trackNumber == trackNumber &&
+                   group.block.header.timestampOffset > timestampOffset;
+          });
     }
 
     if (nextSimpleBlockIt != simpleBlocks.end() &&
@@ -243,34 +292,4 @@ namespace bml::ebml::mkv {
     laceIndex = 0;
     return false;
   }
-
-  namespace detail {
-    FilledFrame fillFrame(Frame frame, std::span<const std::byte> data) {
-      if (frame.dataRange.empty()) {
-        return {std::move(frame), {}};
-      }
-
-      frame.data = frame.dataRange.applyTo(data);
-      if (frame.data.empty()) {
-        throw EndOfStreamError("Frame data range " + frame.dataRange.toString() + " lies outside of " +
-                               std::to_string(data.size()) + " bytes of data");
-      }
-      return {std::move(frame), {}};
-    }
-
-    FilledFrame fillFrame(Frame frame, std::istream &input) {
-      if (frame.dataRange.empty()) {
-        return {std::move(frame), {}};
-      }
-
-      std::vector<std::byte> buffer(frame.dataRange.size.num);
-      input.seekg(static_cast<std::ios::off_type>(frame.dataRange.offset.num), std::ios::beg);
-      input.read(reinterpret_cast<char *>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
-      if (input.eof()) {
-        throw EndOfStreamError("Error reading frame data range " + frame.dataRange.toString() + " from input stream");
-      }
-      frame.data = buffer;
-      return {std::move(frame), std::move(buffer)};
-    }
-  } // namespace detail
 } // namespace bml::ebml::mkv

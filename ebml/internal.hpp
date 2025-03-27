@@ -31,11 +31,26 @@ namespace bml::ebml {
     std::exception_ptr error;
   };
 
+  template <typename Func = void (*)(BitWriter &)>
+  void writeElement(BitWriter &writer, ElementId id, Func &&writeContent,
+                    std::size_t estimatedSize = sizeof(uintmax_t)) {
+    std::vector<std::byte> buffer{};
+    buffer.reserve(estimatedSize);
+    BitWriter bufWriter{buffer, BitWriter::GROW};
+    writeContent(bufWriter);
+    bufWriter.flush();
+
+    detail::writeElementHeader(writer, id, ByteCount{buffer.size()});
+    writer.writeBytes(buffer);
+  }
+
   namespace detail {
     BitReader &getUnderlyingReader(BitReader &reader);
   } // namespace detail
 
   namespace mkv {
-    std::vector<ByteRange> readFrameRanges(BitReader &reader, const BlockHeader &header, const ByteRange &dataRange);
+    std::vector<DataRange> readFrameRanges(BitReader &reader, const BlockHeader &header, const ByteRange &dataRange,
+                                           bool copyFrameData);
+    void writeFrameRanges(BitWriter &writer, const std::vector<DataRange> &frameRanges, BlockHeader::Lacing lacing);
   } // namespace mkv
 } // namespace bml::ebml

@@ -57,19 +57,6 @@ namespace bml::ebml {
       writer.write(value, coveredBits);
     }
 
-    template <typename Func = void (*)(BitWriter &)>
-    static void writeElement(BitWriter &writer, ElementId id, Func &&writeContent,
-                             std::size_t estimatedSize = sizeof(uintmax_t)) {
-      std::vector<std::byte> buffer{};
-      buffer.reserve(estimatedSize);
-      BitWriter bufWriter{buffer, BitWriter::GROW};
-      writeContent(bufWriter);
-      bufWriter.flush();
-
-      detail::writeElementHeader(writer, id, ByteCount{buffer.size()});
-      writer.writeBytes(buffer);
-    }
-
     template <>
     void BaseSimpleElement<bool>::readValue(BitReader &reader, ElementId id, const bool &defaultValue) {
       auto numBytes = readElementHeader(reader, id);

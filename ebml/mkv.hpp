@@ -874,8 +874,6 @@ namespace bml::ebml::mkv {
   struct Matroska {
     EBMLHeader header;
     Segment segment;
-    /** Whether the track data was read and thus can be written back. */
-    bool hasData = false;
 
     constexpr auto operator<=>(const Matroska &) const noexcept = default;
 
@@ -888,8 +886,7 @@ namespace bml::ebml::mkv {
     /**
      * Writes the whole Matroska container to the underlying output.
      *
-     * NOTE: Attempting to write a Matroska object without data (hasData is false) will result in an exception being
-     * thrown.
+     * NOTE: Attempting to write a Matroska object without data will result in an exception being thrown.
      */
     void write(BitWriter &writer) const;
 
